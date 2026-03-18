@@ -5,7 +5,7 @@
   "rules": [
     {
       "comment": "Use upstream on office or corporate SSIDs",
-      "ssids": ["OfficeWifi", "CorpVPN", "FASTWEB-SCGG23"],
+      "ssids": ["OfficeWifi", "CorpVPN"],
       "action": "upstream"
     },
     {
