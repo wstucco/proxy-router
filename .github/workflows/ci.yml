@@ -107,8 +107,9 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
           SHA256: ${{ steps.sha256.outputs.sha256 }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
-          git clone https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/wstucco/homebrew-tap.git tap
+          git clone https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git tap
 
           FORMULA="tap/Formula/proxy-router.rb"
           sed -i '' "s|version \".*\"|version \"${VERSION#v}\"|" "$FORMULA"
@@ -117,6 +118,7 @@ jobs:
           cd tap
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git
           git add Formula/proxy-router.rb
           git commit -m "proxy-router: update to ${VERSION}"
           git push
