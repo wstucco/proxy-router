@@ -10,6 +10,13 @@ class ProxyRouter < Formula
 
   def install
     bin.install "proxy-router-v#{version}-darwin-arm64" => "proxy-router"
+    # Install shell completions
+    bash_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "bash")
+    (etc/"bash_completion.d/proxy-router").write bash_output
+    zsh_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "zsh")
+    (share/"zsh/site-functions/_proxy-router").write zsh_output
+    fish_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "fish")
+    (share/"fish/vendor_completions.d/proxy-router.fish").write fish_output
   end
 
   service do
@@ -30,8 +37,7 @@ class ProxyRouter < Formula
 
   def caveats
     <<~EOS
-      Run the following to install shell completions and finish setup:
-        proxy-router install
+      Shell completions for bash, zsh, and fish are installed automatically.
 
       To start proxy-router as a service:
         brew services start proxy-router
