@@ -42,35 +42,44 @@ jobs:
       - name: Build
         run: |
           go build \
-            -ldflags "-X main.version=${GITHUB_REF_NAME} -s -w" \
-            -o proxy-router \
+            -ldflags "-X main.version=${GITHUB_REF_NAME:-dev} -s -w" \
+            -o proxy-router-${GITHUB_REF_NAME:-dev}-darwin-arm64 \
             ./cmd/proxy
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: proxy-router-darwin-arm64
-          path: proxy-router
+          path: proxy-router-*-darwin-arm64
           retention-days: 7
 
   # ─── release ───────────────────────────────────────────────────────────────
   release:
     name: Release
-    runs-on: ubuntu-latest
+    runs-on: macos-14
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: proxy-router-darwin-arm64
 
-      - name: Rename binary
-        run: mv proxy-router proxy-router-${{ github.ref_name }}-darwin-arm64
+      - name: Compute sha256
+        id: sha256
+        run: |
+          BINARY="proxy-router-${{ github.ref_name }}-darwin-arm64"
+          SHA=$(shasum -a 256 "$BINARY" | awk '{print $1}')
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "binary=$BINARY" >> $GITHUB_OUTPUT
 
-      - name: Create release
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
@@ -79,12 +88,39 @@ jobs:
 
             A local proxy that routes connections to an upstream or direct based on configurable rules.
 
-            ### Install
+            ### Install via Homebrew (recommended)
+            ```
+            brew tap wstucco/tap
+            brew install proxy-router
+            brew services start proxy-router
+            proxy-router install  # installs shell completions
+            ```
 
-            Download the binary below, then run:
+            ### Manual install
             ```
             chmod +x proxy-router-${{ github.ref_name }}-darwin-arm64
-            mv proxy-router-${{ github.ref_name }}-darwin-arm64 proxy-router
-            ./proxy-router install
+            sudo mv proxy-router-${{ github.ref_name }}-darwin-arm64 /usr/local/bin/proxy-router
+            proxy-router install
             ```
           files: proxy-router-${{ github.ref_name }}-darwin-arm64
+
+      - name: Update Homebrew formula
+        env:
+          VERSION: ${{ github.ref_name }}
+          SHA256: ${{ steps.sha256.outputs.sha256 }}
+        run: |
+          # Clone the tap repo
+          git clone https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/wstucco/homebrew-tap.git tap
+
+          FORMULA="tap/Formula/proxy-router.rb"
+
+          # Update version and sha256
+          sed -i '' "s|version \".*\"|version \"${VERSION#v}\"|" "$FORMULA"
+          sed -i '' "s|sha256 \".*\"|sha256 \"$SHA256\"|" "$FORMULA"
+
+          cd tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/proxy-router.rb
+          git commit -m "proxy-router: update to ${VERSION}"
+          git push
