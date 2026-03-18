@@ -10,13 +10,13 @@ class ProxyRouter < Formula
 
   def install
     bin.install "proxy-router-v#{version}-darwin-arm64" => "proxy-router"
-    # Install shell completions
+    # Install shell completions in Homebrew's global completions directories
     bash_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "bash")
-    (etc/"bash_completion.d/proxy-router").write bash_output
+    (bash_completion/"proxy-router").write bash_output
     zsh_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "zsh")
-    (share/"zsh/site-functions/_proxy-router").write zsh_output
+    (zsh_completion/"_proxy-router").write zsh_output
     fish_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "fish")
-    (share/"fish/vendor_completions.d/proxy-router.fish").write fish_output
+    (fish_completion/"proxy-router.fish").write fish_output
   end
 
   service do
