@@ -7,29 +7,49 @@ import (
 
 // CurrentSSID returns the current Wi-Fi SSID on macOS, or "" if not connected.
 func CurrentSSID() string {
-	// macOS 13+: use wdutil info (requires no sudo for SSID)
-	// Fallback: airport utility
-	out, err := exec.Command(
-		"/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport",
-		"-I",
-	).Output()
-	if err == nil {
-		for _, line := range strings.Split(string(out), "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "SSID: ") {
-				return strings.TrimPrefix(line, "SSID: ")
+	iface := wifiInterface()
+	if iface == "" {
+		return ""
+	}
+
+	out, err := exec.Command("ipconfig", "getsummary", iface).Output()
+	if err != nil {
+		return ""
+	}
+
+	return parseSSID(string(out))
+}
+
+// wifiInterface finds the BSD device name for the Wi-Fi/AirPort adapter.
+func wifiInterface() string {
+	out, err := exec.Command("networksetup", "-listallhardwareports").Output()
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(out), "\n")
+	for i, line := range lines {
+		if strings.Contains(line, "Wi-Fi") || strings.Contains(line, "AirPort") {
+			if i+1 < len(lines) {
+				fields := strings.Fields(lines[i+1])
+				if len(fields) > 0 {
+					return fields[len(fields)-1]
+				}
 			}
 		}
 	}
+	return ""
+}
 
-	// macOS 14+ fallback via networksetup
-	out2, err2 := exec.Command("networksetup", "-getairportnetwork", "en0").Output()
-	if err2 == nil {
-		s := strings.TrimSpace(string(out2))
-		if idx := strings.Index(s, ": "); idx != -1 {
-			return s[idx+2:]
+// parseSSID extracts the SSID value from ipconfig getsummary output.
+func parseSSID(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "SSID : ") {
+			parts := strings.SplitN(line, ": ", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
 		}
 	}
-
 	return ""
 }
