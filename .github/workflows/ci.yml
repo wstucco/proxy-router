@@ -43,14 +43,20 @@ jobs:
         run: |
           go build \
             -ldflags "-X main.version=${GITHUB_REF_NAME:-dev} -s -w" \
-            -o proxy-router-${GITHUB_REF_NAME:-dev}-darwin-arm64 \
+            -o proxy-router \
             ./cmd/proxy
+
+      - name: Package
+        run: |
+          ARCHIVE="proxy-router-${GITHUB_REF_NAME:-dev}-darwin-arm64.tar.gz"
+          tar -czf "$ARCHIVE" proxy-router
+          echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: proxy-router-darwin-arm64
-          path: proxy-router-*-darwin-arm64
+          path: proxy-router-*-darwin-arm64.tar.gz
           retention-days: 7
 
   # ─── release ───────────────────────────────────────────────────────────────
@@ -72,10 +78,10 @@ jobs:
       - name: Compute sha256
         id: sha256
         run: |
-          BINARY="proxy-router-${{ github.ref_name }}-darwin-arm64"
-          SHA=$(shasum -a 256 "$BINARY" | awk '{print $1}')
+          ARCHIVE="proxy-router-${{ github.ref_name }}-darwin-arm64.tar.gz"
+          SHA=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
           echo "sha256=$SHA" >> $GITHUB_OUTPUT
-          echo "binary=$BINARY" >> $GITHUB_OUTPUT
+          echo "archive=$ARCHIVE" >> $GITHUB_OUTPUT
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -97,11 +103,11 @@ jobs:
 
             ### Manual install
             ```
-            chmod +x proxy-router-${{ github.ref_name }}-darwin-arm64
-            sudo mv proxy-router-${{ github.ref_name }}-darwin-arm64 /usr/local/bin/proxy-router
+            tar -xzf proxy-router-${{ github.ref_name }}-darwin-arm64.tar.gz
+            sudo mv proxy-router /usr/local/bin/proxy-router
             proxy-router install
             ```
-          files: proxy-router-${{ github.ref_name }}-darwin-arm64
+          files: proxy-router-${{ github.ref_name }}-darwin-arm64.tar.gz
 
       - name: Update Homebrew formula
         env:

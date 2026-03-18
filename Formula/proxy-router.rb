@@ -4,14 +4,14 @@ class ProxyRouter < Formula
   version "0.0.0" # updated by CI
 
   on_arm do
-    url "https://github.com/wstucco/proxy-router/releases/download/v#{version}/proxy-router-v#{version}-darwin-arm64"
+    url "https://github.com/wstucco/proxy-router/releases/download/v#{version}/proxy-router-v#{version}-darwin-arm64.tar.gz"
     sha256 "placeholder" # updated by CI
   end
 
   def install
-    bin.install "proxy-router-v#{version}-darwin-arm64" => "proxy-router"
+    bin.install "proxy-router"
 
-    # Install shell completions
+    # Generate shell completions
     (bash_completion/"proxy-router").write Utils.safe_popen_read(bin/"proxy-router", "completion", "bash")
     (zsh_completion/"_proxy-router").write Utils.safe_popen_read(bin/"proxy-router", "completion", "zsh")
     (fish_completion/"proxy-router.fish").write Utils.safe_popen_read(bin/"proxy-router", "completion", "fish")
