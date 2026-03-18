@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -123,8 +124,15 @@ func dialViaUpstream(upstream, target string) (net.Conn, error) {
 		return nil, fmt.Errorf("dialing upstream proxy %s: %w", proxyHost, err)
 	}
 
-	// Send CONNECT to upstream
-	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", target, target)
+	// Build CONNECT request, adding auth header if credentials are present
+	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n", target, target)
+	if u.User != nil {
+		pass, _ := u.User.Password()
+		creds := base64.StdEncoding.EncodeToString([]byte(u.User.Username() + ":" + pass))
+		req += "Proxy-Authorization: Basic " + creds + "\r\n"
+	}
+	req += "\r\n"
+
 	if _, err := conn.Write([]byte(req)); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("sending CONNECT: %w", err)
