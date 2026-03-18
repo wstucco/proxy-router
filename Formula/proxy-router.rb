@@ -12,11 +12,16 @@ class ProxyRouter < Formula
     bin.install "proxy-router-v#{version}-darwin-arm64" => "proxy-router"
     # Install shell completions in Homebrew's global completions directories
     bash_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "bash")
-    (bash_completion/"proxy-router").write bash_output
+    (buildpath/"proxy-router.bash").write bash_output
+    bash_completion.install "proxy-router.bash" => "proxy-router"
+
     zsh_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "zsh")
-    (zsh_completion/"_proxy-router").write zsh_output
+    (buildpath/"_proxy-router").write zsh_output
+    zsh_completion.install "_proxy-router"
+
     fish_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "fish")
-    (fish_completion/"proxy-router.fish").write fish_output
+    (buildpath/"proxy-router.fish").write fish_output
+    fish_completion.install "proxy-router.fish"
   end
 
   service do
@@ -49,11 +54,13 @@ class ProxyRouter < Formula
         brew uninstall --zap proxy-router
       Homebrew will prompt to remove all configuration and log files for proxy-router.
     EOS
-      zap do
-        delete etc/"proxy-router"
-        delete var/"log/proxy-router.log"
-        delete var/"log/proxy-router.err"
-      end
+  end
+
+  zap do
+    delete etc/"proxy-router"
+    delete var/"log/proxy-router.log"
+    delete var/"log/proxy-router.err"
+  end
   end
 
   test do
