@@ -12,6 +12,7 @@ import (
 
 	"github.com/local/proxy-router/internal/config"
 	"github.com/local/proxy-router/internal/proxy"
+	"github.com/local/proxy-router/internal/router"
 )
 
 func main() {
@@ -34,6 +35,9 @@ func main() {
 	// Atomic pointer for hot reload
 	var cfgPtr atomic.Pointer[config.Config]
 	cfgPtr.Store(cfg)
+
+	// Start network change listener (keeps SSID cache up to date)
+	go router.StartNetworkListener()
 
 	// Hot reload on SIGHUP
 	go func() {

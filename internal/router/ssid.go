@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// CurrentSSID returns the current Wi-Fi SSID on macOS, or "" if not connected.
-func CurrentSSID() string {
+// fetchSSID queries the current Wi-Fi SSID directly (used by the network listener).
+func fetchSSID() string {
 	iface := wifiInterface()
 	if iface == "" {
 		return ""
