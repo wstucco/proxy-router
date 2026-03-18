@@ -14,10 +14,13 @@ import (
 	"text/template"
 	"time"
 
-	"gitlab.com/wstucco/proxy-router/internal/config"
-	"gitlab.com/wstucco/proxy-router/internal/proxy"
-	"gitlab.com/wstucco/proxy-router/internal/router"
+	"github.com/wstucco/proxy-router/internal/config"
+	"github.com/wstucco/proxy-router/internal/proxy"
+	"github.com/wstucco/proxy-router/internal/router"
 )
+
+// version is set at build time via -ldflags "-X main.version=x.y.z"
+var version = "dev"
 
 const plistName = "com.local.proxy-router.plist"
 const binaryName = "proxy-router"
@@ -116,7 +119,10 @@ func cmdInstall() {
 	}
 	fmt.Printf("✓ plist     → %s\n", plistPath())
 
-	// 4. Load LaunchAgent
+	// 4. Set GOTOOLCHAIN=local to avoid toolchain download attempts
+	exec.Command("go", "env", "-w", "GOTOOLCHAIN=local").Run()
+
+	// 5. Load LaunchAgent
 	out, err := exec.Command("launchctl", "load", "-w", plistPath()).CombinedOutput()
 	if err != nil {
 		log.Fatalf("install: launchctl load: %v\n%s", err, out)
@@ -159,6 +165,7 @@ func removeFile(path, label string) {
 }
 
 func printHelp() {
+	fmt.Printf("proxy-router version %s\n\n", version)
 	fmt.Print(`proxy-router — a local proxy that routes connections based on configurable rules.
 
 USAGE:
@@ -285,6 +292,8 @@ func main() {
 		cmdUninstall(prune)
 	case "run":
 		cmdRun(os.Args[2:])
+	case "version", "-v", "--version":
+		fmt.Printf("proxy-router version %s\n", version)
 	case "help", "-h", "--help":
 		printHelp()
 	default:

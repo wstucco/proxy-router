@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"time"
 
-	"gitlab.com/wstucco/proxy-router/internal/config"
-	"gitlab.com/wstucco/proxy-router/internal/router"
+	"github.com/wstucco/proxy-router/internal/config"
+	"github.com/wstucco/proxy-router/internal/router"
 )
 
 type Server struct {
