@@ -1,0 +1,13 @@
+# Build output
+proxy-router
+*.exe
+
+# Go
+vendor/
+
+# GoLand / JetBrains
+.idea/
+*.iml
+
+# macOS
+.DS_Store
