@@ -10,18 +10,11 @@ class ProxyRouter < Formula
 
   def install
     bin.install "proxy-router-v#{version}-darwin-arm64" => "proxy-router"
-    # Install shell completions in Homebrew's global completions directories
-    bash_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "bash")
-    (buildpath/"proxy-router.bash").write bash_output
-    bash_completion.install "proxy-router.bash" => "proxy-router"
 
-    zsh_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "zsh")
-    (buildpath/"_proxy-router").write zsh_output
-    zsh_completion.install "_proxy-router"
-
-    fish_output = Utils.safe_popen_read(bin/"proxy-router", "completion", "fish")
-    (buildpath/"proxy-router.fish").write fish_output
-    fish_completion.install "proxy-router.fish"
+    # Install shell completions
+    (bash_completion/"proxy-router").write Utils.safe_popen_read(bin/"proxy-router", "completion", "bash")
+    (zsh_completion/"_proxy-router").write Utils.safe_popen_read(bin/"proxy-router", "completion", "zsh")
+    (fish_completion/"proxy-router.fish").write Utils.safe_popen_read(bin/"proxy-router", "completion", "fish")
   end
 
   service do
@@ -34,33 +27,18 @@ class ProxyRouter < Formula
   def post_install
     (etc/"proxy-router").mkpath
     unless (etc/"proxy-router/config.json").exist?
-      system bin/"proxy-router", "-gen-config" do |io|
-        (etc/"proxy-router/config.json").write io.read
-      end
+      (etc/"proxy-router/config.json").write Utils.safe_popen_read(bin/"proxy-router", "run", "-gen-config")
     end
   end
 
   def caveats
     <<~EOS
-      Shell completions for bash, zsh, and fish are installed automatically.
-
       To start proxy-router as a service:
         brew services start proxy-router
 
       Config file: #{etc}/proxy-router/config.json
       Logs:        #{var}/log/proxy-router.{log,err}
-
-      When you run:
-        brew uninstall --zap proxy-router
-      Homebrew will prompt to remove all configuration and log files for proxy-router.
     EOS
-  end
-
-  zap do
-    delete etc/"proxy-router"
-    delete var/"log/proxy-router.log"
-    delete var/"log/proxy-router.err"
-  end
   end
 
   test do

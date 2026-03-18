@@ -118,7 +118,6 @@ jobs:
           cd tap
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git
           git add Formula/proxy-router.rb
           git commit -m "proxy-router: update to ${VERSION}"
-          git push
+          git push https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git HEAD:main
