@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/local/proxy-router/internal/config"
 	"github.com/local/proxy-router/internal/proxy"
@@ -32,30 +33,52 @@ func main() {
 	log.Printf("loaded config: listen=%s upstream=%s default=%s rules=%d",
 		cfg.Listen, cfg.Upstream, cfg.Default, len(cfg.Rules))
 
-	// Atomic pointer for hot reload
 	var cfgPtr atomic.Pointer[config.Config]
 	cfgPtr.Store(cfg)
 
-	// Start network change listener (keeps SSID cache up to date)
-	go router.StartNetworkListener()
+	reload := func() {
+		newCfg, err := config.Load(*cfgPath)
+		if err != nil {
+			log.Printf("[reload] error: %v — keeping current config", err)
+			return
+		}
+		cfgPtr.Store(newCfg)
+		log.Printf("[reload] config reloaded: rules=%d", len(newCfg.Rules))
+	}
 
-	// Hot reload on SIGHUP
+	// Watch config file for changes (poll mtime every second)
+	go func() {
+		var lastMod time.Time
+		if fi, err := os.Stat(*cfgPath); err == nil {
+			lastMod = fi.ModTime()
+		}
+		for range time.Tick(500 * time.Millisecond) {
+			fi, err := os.Stat(*cfgPath)
+			if err != nil {
+				continue
+			}
+			if fi.ModTime().After(lastMod) {
+				lastMod = fi.ModTime()
+				log.Printf("[reload] config file changed, reloading...")
+				reload()
+			}
+		}
+	}()
+
+	// Also support manual SIGHUP
 	go func() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGHUP)
 		for range ch {
-			newCfg, err := config.Load(*cfgPath)
-			if err != nil {
-				log.Printf("[reload] error: %v — keeping current config", err)
-				continue
-			}
-			cfgPtr.Store(newCfg)
-			log.Printf("[reload] config reloaded: rules=%d", len(newCfg.Rules))
+			log.Printf("[reload] SIGHUP received, reloading...")
+			reload()
 		}
 	}()
 
+	// Start network change listener (keeps SSID cache up to date)
+	go router.StartNetworkListener()
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Always read latest config atomically
 		current := cfgPtr.Load()
 		srv := proxy.New(current)
 		srv.ServeHTTP(w, r)
