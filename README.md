@@ -8,58 +8,72 @@ A lightweight local proxy (`localhost:32000`) that forwards connections to an up
 - Rule-based routing: forward upstream or go direct based on SSID, hostname, or IP
 - Authenticated upstream proxies (`http://user:pass@host:port`)
 - Hot config reload — save the file and changes apply within 1 second (or send `SIGHUP`)
-- macOS network change listener via `SCDynamicStore` — SSID cache updated on network events, zero per-request shell-outs
-- Per-user install with LaunchAgent autostart
-
-## Commands
-
-```
-proxy-router install              Install and start at login
-proxy-router uninstall            Stop and remove (keeps config)
-proxy-router uninstall --prune    Stop, remove everything including config
-proxy-router run                  Start the proxy
-proxy-router run -config <path>   Start with a custom config path
-proxy-router help                 Show help
-```
+- macOS network change listener via `SCDynamicStore` — SSID cache updated on network events
+- Brew service and manual LaunchAgent support
 
 ## Install
+
+### Homebrew (recommended)
+
+```bash
+brew tap wstucco/tap
+brew install proxy-router
+brew services start proxy-router
+proxy-router install   # installs shell completions
+```
+
+### Manual
 
 ```bash
 # Build
 go build -o proxy-router ./cmd/proxy
 
-# Install (copies binary, writes default config, registers LaunchAgent)
-./proxy-router install
+# Install binary
+sudo mv proxy-router /usr/local/bin/proxy-router
+
+# Install config, completions, and register LaunchAgent
+proxy-router install
 ```
 
-Installed paths (all per-user, no sudo required):
+## Commands
+
+```
+proxy-router run                        Start the proxy
+proxy-router run -listen localhost:33000 -config ~/myconf.json
+proxy-router install                    Write config, install completions, register LaunchAgent
+proxy-router uninstall                  Deregister LaunchAgent, remove completions (keeps config)
+proxy-router uninstall --prune          Remove everything including config
+proxy-router completion <zsh|bash|fish> Print completion script
+proxy-router version                    Print version
+proxy-router help                       Show help
+```
+
+## Paths
+
+### Homebrew install
 
 | Path | Purpose |
 |---|---|
-| `~/.local/bin/proxy-router` | Binary |
-| `~/.config/proxy-router/config.json` | Config |
-| `~/Library/LaunchAgents/com.local.proxy-router.plist` | LaunchAgent |
-| `~/Library/Logs/proxy-router.{log,err}` | Logs |
+| `/opt/homebrew/bin/proxy-router` | Binary |
+| `/opt/homebrew/etc/proxy-router/config.json` | Config |
+| `/opt/homebrew/var/log/proxy-router.log` | Log |
+| managed by `brew services` | LaunchAgent |
 
-After install, edit `~/.config/proxy-router/config.json` — changes are picked up automatically within 1 second.
+### Manual install
 
-## Uninstall
+| Path | Purpose |
+|---|---|
+| `/usr/local/bin/proxy-router` | Binary |
+| `/usr/local/etc/proxy-router/config.json` | Config |
+| `/usr/local/var/log/proxy-router/proxy-router.log` | Log |
+| `/Library/LaunchAgents/com.wstucco.proxy-router.plist` | LaunchAgent |
 
-```bash
-# Remove everything except config
-proxy-router uninstall
+## Local dev run
 
-# Remove everything including config
-proxy-router uninstall --prune
-```
-
-## macOS system proxy
-
-Point macOS at the proxy via System Settings → Network → (interface) → Proxies, or via CLI:
+Run with a custom config and port without installing anything:
 
 ```bash
-networksetup -setwebproxy Wi-Fi localhost 32000
-networksetup -setsecurewebproxy Wi-Fi localhost 32000
+proxy-router run -config ~/myconf.json -listen localhost:33000
 ```
 
 ## Config
@@ -70,7 +84,7 @@ Rules are evaluated **top-to-bottom**; the first match wins. Each rule can match
 - `domains` — destination hostname suffix (`corp.com` matches `jira.corp.com`)
 - `ips` — destination IP (exact match)
 
-All matchers in a rule must match (AND logic). If no rule matches, `default` is used (`"direct"` or `"upstream"`).
+All matchers in a rule must match (AND logic). If no rule matches, `default` is used.
 
 ```json
 {
@@ -95,18 +109,38 @@ All matchers in a rule must match (AND logic). If no rule matches, `default` is 
 }
 ```
 
-## Hot reload
+## Shell completions
 
-Changes to the config file are picked up automatically within 1 second. You can also trigger a manual reload:
+Installed automatically by `proxy-router install`. To install manually:
 
 ```bash
-kill -HUP $(pgrep proxy-router)
+# zsh
+proxy-router completion zsh > ~/.zsh/completions/_proxy-router
+# add to ~/.zshrc: fpath=(~/.zsh/completions $fpath) && autoload -Uz compinit && compinit
+
+# bash
+proxy-router completion bash > ~/.local/share/bash-completion/completions/proxy-router
+
+# fish
+proxy-router completion fish > ~/.config/fish/completions/proxy-router.fish
 ```
+
+## Releasing
+
+Tag a commit to trigger a GitHub Actions build and release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The CI will build the binary, create a GitHub release, and automatically update the Homebrew formula in `wstucco/homebrew-tap`. Requires a `HOMEBREW_TAP_TOKEN` secret (GitHub PAT with repo write access to the tap).
 
 ## Build notes
 
-This project uses cgo (`SCDynamicStore` via `SystemConfiguration.framework`) and is macOS-only. Requires Xcode Command Line Tools:
+Requires cgo (`SystemConfiguration.framework`, macOS only):
 
 ```bash
 xcode-select --install
+go build -o proxy-router ./cmd/proxy
 ```
