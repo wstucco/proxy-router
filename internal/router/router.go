@@ -4,7 +4,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/local/proxy-router/internal/config"
+	"gitlab.com/wstucco/proxy-router/internal/config"
 )
 
 // Decide evaluates rules top-to-bottom and returns the action for the given host.

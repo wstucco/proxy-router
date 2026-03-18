@@ -1,3 +1,3 @@
-module github.com/local/proxy-router
+module gitlab.com/wstucco/proxy-router
 
 go 1.23.1

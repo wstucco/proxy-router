@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/local/proxy-router/internal/config"
-	"github.com/local/proxy-router/internal/proxy"
-	"github.com/local/proxy-router/internal/router"
+	"gitlab.com/wstucco/proxy-router/internal/config"
+	"gitlab.com/wstucco/proxy-router/internal/proxy"
+	"gitlab.com/wstucco/proxy-router/internal/router"
 )
 
 func main() {

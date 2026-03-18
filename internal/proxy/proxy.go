@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/local/proxy-router/internal/config"
-	"github.com/local/proxy-router/internal/router"
+	"gitlab.com/wstucco/proxy-router/internal/config"
+	"gitlab.com/wstucco/proxy-router/internal/router"
 )
 
 type Server struct {
