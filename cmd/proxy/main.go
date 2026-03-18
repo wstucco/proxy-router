@@ -128,6 +128,9 @@ func cmdInstall() {
 		log.Fatalf("install: launchctl load: %v\n%s", err, out)
 	}
 	fmt.Println("✓ launchctl load → proxy-router started")
+
+	// 6. Install shell completions
+	installCompletions()
 	fmt.Printf("\nProxy is running at %s\n", "localhost:32000")
 	fmt.Printf("Edit config: %s\n", cfgPath())
 	fmt.Printf("View logs:   %s\n", filepath.Join(home, "Library", "Logs", "proxy-router.log"))
@@ -144,7 +147,10 @@ func cmdUninstall(prune bool) {
 	// 3. Remove binary
 	removeFile(binPath(), "binary")
 
-	// 4. Optionally remove config
+	// 4. Remove completion files
+	removeCompletions()
+
+	// 5. Optionally remove config
 	if prune {
 		if err := os.RemoveAll(cfgDir()); err != nil {
 			log.Printf("uninstall: removing config dir: %v", err)
@@ -153,6 +159,20 @@ func cmdUninstall(prune bool) {
 		}
 	} else {
 		fmt.Printf("  config kept → %s (use --prune to delete)\n", cfgDir())
+	}
+}
+
+func removeCompletions() {
+	home := userHome()
+	files := []string{
+		filepath.Join(home, ".zsh", "completions", "_proxy-router"),
+		filepath.Join(home, ".local", "share", "bash-completion", "completions", "proxy-router"),
+		filepath.Join(home, ".config", "fish", "completions", "proxy-router.fish"),
+	}
+	for _, f := range files {
+		if err := os.Remove(f); err == nil {
+			fmt.Printf("✓ completion removed → %s\n", f)
+		}
 	}
 }
 
@@ -428,3 +448,90 @@ complete -c proxy-router -n "__fish_seen_subcommand_from uninstall" -l prune -d 
 # completion shells
 complete -c proxy-router -n "__fish_seen_subcommand_from completion" -a "zsh bash fish"
 `
+
+// ─── completion install ───────────────────────────────────────────────────────
+
+type shellCompletion struct {
+	name    string
+	binary  string // binary to check for existence
+	dir     func() string
+	file    string
+	content string
+	notice  string // what to add to shell config, if anything
+}
+
+func installCompletions() {
+	home := userHome()
+
+	shells := []shellCompletion{
+		{
+			name:   "zsh",
+			binary: "zsh",
+			dir: func() string {
+				// Use XDG-friendly user completions dir
+				return filepath.Join(home, ".zsh", "completions")
+			},
+			file:    "_proxy-router",
+			content: zshCompletion,
+			notice: "  Add to ~/.zshrc if not already present:\n" +
+				"    fpath=(~/.zsh/completions $fpath)\n" +
+				"    autoload -Uz compinit && compinit",
+		},
+		{
+			name:   "bash",
+			binary: "bash",
+			dir: func() string {
+				// XDG user bash-completion dir (bash-completion v2 picks this up automatically)
+				return filepath.Join(home, ".local", "share", "bash-completion", "completions")
+			},
+			file:    "proxy-router",
+			content: bashCompletion,
+			notice: "  Requires bash-completion v2. Add to ~/.bash_profile if not already present:\n" +
+				"    [[ -r \"$(brew --prefix)/etc/profile.d/bash_completion.sh\" ]] && \\\n" +
+				"      . \"$(brew --prefix)/etc/profile.d/bash_completion.sh\"",
+		},
+		{
+			name:   "fish",
+			binary: "fish",
+			dir: func() string {
+				return filepath.Join(home, ".config", "fish", "completions")
+			},
+			file:    "proxy-router.fish",
+			content: fishCompletion,
+			notice:  "", // fish picks up completions automatically, no config needed
+		},
+	}
+
+	fmt.Println()
+	anyInstalled := false
+
+	for _, s := range shells {
+		// Skip if shell is not installed
+		if _, err := exec.LookPath(s.binary); err != nil {
+			continue
+		}
+
+		dir := s.dir()
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			fmt.Printf("  ! %s completion: could not create dir %s: %v\n", s.name, dir, err)
+			continue
+		}
+
+		dest := filepath.Join(dir, s.file)
+		if err := os.WriteFile(dest, []byte(s.content), 0644); err != nil {
+			fmt.Printf("  ! %s completion: could not write %s: %v\n", s.name, dest, err)
+			continue
+		}
+
+		fmt.Printf("✓ %s completion → %s\n", s.name, dest)
+		if s.notice != "" {
+			fmt.Println(s.notice)
+		}
+		anyInstalled = true
+	}
+
+	if !anyInstalled {
+		fmt.Println("  No supported shells detected, skipping completions.")
+		fmt.Println("  Run `proxy-router completion <zsh|bash|fish>` to generate manually.")
+	}
+}
