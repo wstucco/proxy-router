@@ -175,6 +175,7 @@ COMMANDS:
   run         Start the proxy (default if no command given)
   install     Install binary, config, and LaunchAgent; start automatically at login
   uninstall   Stop and remove binary and LaunchAgent (config is kept by default)
+  completion  Generate shell completion script (zsh, bash, fish)
   help        Show this help
 
 RUN FLAGS:
@@ -189,6 +190,9 @@ EXAMPLES:
   proxy-router run -config /tmp/test.json
   proxy-router uninstall
   proxy-router uninstall --prune
+  proxy-router completion zsh > $(brew --prefix)/share/zsh/site-functions/_proxy-router
+  proxy-router completion bash > $(brew --prefix)/etc/bash_completion.d/proxy-router
+  proxy-router completion fish > ~/.config/fish/completions/proxy-router.fish
 
 PATHS (per-user install):
   Binary:      ~/.local/bin/proxy-router
@@ -290,6 +294,8 @@ func main() {
 	case "uninstall":
 		prune := len(os.Args) > 2 && os.Args[2] == "--prune"
 		cmdUninstall(prune)
+	case "completion":
+		cmdCompletion(os.Args[2:])
 	case "run":
 		cmdRun(os.Args[2:])
 	case "version", "-v", "--version":
@@ -301,3 +307,124 @@ func main() {
 		cmdRun(os.Args[1:])
 	}
 }
+
+// ─── shell completion ─────────────────────────────────────────────────────────
+
+func cmdCompletion(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: proxy-router completion <zsh|bash|fish>")
+		os.Exit(1)
+	}
+	switch args[0] {
+	case "zsh":
+		fmt.Print(zshCompletion)
+	case "bash":
+		fmt.Print(bashCompletion)
+	case "fish":
+		fmt.Print(fishCompletion)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown shell %q — supported: zsh, bash, fish\n", args[0])
+		os.Exit(1)
+	}
+}
+
+const zshCompletion = `#compdef proxy-router
+
+_proxy_router() {
+  local -a commands
+  commands=(
+    'run:Start the proxy'
+    'install:Install binary, config, and LaunchAgent'
+    'uninstall:Stop and remove binary and LaunchAgent'
+    'completion:Generate shell completion script'
+    'version:Print version'
+    'help:Show help'
+  )
+
+  local -a run_flags
+  run_flags=(
+    '-config[Path to config file]:file:_files'
+    '-gen-config[Print example config.json and exit]'
+  )
+
+  local -a uninstall_flags
+  uninstall_flags=(
+    '--prune[Also delete the config directory]'
+  )
+
+  local -a shells
+  shells=(zsh bash fish)
+
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+    return
+  fi
+
+  case ${words[2]} in
+    run)
+      _arguments $run_flags ;;
+    uninstall)
+      _arguments $uninstall_flags ;;
+    completion)
+      _describe 'shell' shells ;;
+  esac
+}
+
+_proxy_router "$@"
+`
+
+const bashCompletion = `_proxy_router() {
+  local cur prev words
+  _init_completion || return
+
+  local commands="run install uninstall completion version help"
+
+  case "$prev" in
+    proxy-router)
+      COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+      return ;;
+    -config)
+      COMPREPLY=($(compgen -f -- "$cur"))
+      return ;;
+    completion)
+      COMPREPLY=($(compgen -W "zsh bash fish" -- "$cur"))
+      return ;;
+    uninstall)
+      COMPREPLY=($(compgen -W "--prune" -- "$cur"))
+      return ;;
+    run)
+      COMPREPLY=($(compgen -W "-config -gen-config" -- "$cur"))
+      return ;;
+  esac
+
+  COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+}
+
+complete -F _proxy_router proxy-router
+`
+
+const fishCompletion = `# proxy-router fish completion
+
+set -l commands run install uninstall completion version help
+
+# disable file completion by default
+complete -c proxy-router -f
+
+# subcommands
+complete -c proxy-router -n "__fish_use_subcommand" -a run        -d "Start the proxy"
+complete -c proxy-router -n "__fish_use_subcommand" -a install    -d "Install binary, config, and LaunchAgent"
+complete -c proxy-router -n "__fish_use_subcommand" -a uninstall  -d "Stop and remove binary and LaunchAgent"
+complete -c proxy-router -n "__fish_use_subcommand" -a completion -d "Generate shell completion script"
+complete -c proxy-router -n "__fish_use_subcommand" -a version    -d "Print version"
+complete -c proxy-router -n "__fish_use_subcommand" -a help       -d "Show help"
+
+# run flags
+complete -c proxy-router -n "__fish_seen_subcommand_from run" -l config     -d "Path to config file" -r -F
+complete -c proxy-router -n "__fish_seen_subcommand_from run" -l gen-config -d "Print example config.json and exit"
+
+# uninstall flags
+complete -c proxy-router -n "__fish_seen_subcommand_from uninstall" -l prune -d "Also delete the config directory"
+
+# completion shells
+complete -c proxy-router -n "__fish_seen_subcommand_from completion" -a "zsh bash fish"
+`
