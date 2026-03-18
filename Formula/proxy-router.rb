@@ -44,7 +44,16 @@ class ProxyRouter < Formula
 
       Config file: #{etc}/proxy-router/config.json
       Logs:        #{var}/log/proxy-router.{log,err}
+
+      When you run:
+        brew uninstall --zap proxy-router
+      Homebrew will prompt to remove all configuration and log files for proxy-router.
     EOS
+      zap do
+        delete etc/"proxy-router"
+        delete var/"log/proxy-router.log"
+        delete var/"log/proxy-router.err"
+      end
   end
 
   test do
