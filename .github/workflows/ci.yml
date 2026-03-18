@@ -63,8 +63,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -82,6 +80,7 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           name: Release ${{ github.ref_name }}
           body: |
             ## proxy-router ${{ github.ref_name }}
@@ -109,12 +108,9 @@ jobs:
           VERSION: ${{ github.ref_name }}
           SHA256: ${{ steps.sha256.outputs.sha256 }}
         run: |
-          # Clone the tap repo
           git clone https://x-access-token:${{ secrets.HOMEBREW_TAP_TOKEN }}@github.com/wstucco/homebrew-tap.git tap
 
           FORMULA="tap/Formula/proxy-router.rb"
-
-          # Update version and sha256
           sed -i '' "s|version \".*\"|version \"${VERSION#v}\"|" "$FORMULA"
           sed -i '' "s|sha256 \".*\"|sha256 \"$SHA256\"|" "$FORMULA"
 
