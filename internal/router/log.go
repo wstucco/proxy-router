@@ -25,14 +25,14 @@ func logEntry(host, ssid string, action string, ruleMatched bool) {
 	if key == logger.lastKey {
 		logger.count++
 		if logger.count%dedupThreshold == 0 {
-			log.Printf("[router] ... %d times: %s", logger.count, key)
+			log.Printf("[router] %s repeated %d times", key, logger.count)
 		}
 		return
 	}
 
 	// Flush leftover count for previous key
 	if logger.count > 0 && logger.count%dedupThreshold != 0 {
-		log.Printf("[router] ... %d times: %s", logger.count, logger.lastKey)
+		log.Printf("[router] %s repeated %d times", logger.lastKey, logger.count)
 	}
 
 	logger.lastKey = key

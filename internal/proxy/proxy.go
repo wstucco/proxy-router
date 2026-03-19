@@ -185,7 +185,7 @@ func dialViaUpstream(upstream, target string, dialer *net.Dialer) (net.Conn, err
 		return nil, fmt.Errorf("dialing upstream %s: %w", proxyHost, err)
 	}
 
-	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n", target, target)
+	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: Mozilla/5.0\r\nProxy-Connection: Keep-Alive\r\n", target, target)
 	if u.User != nil {
 		pass, _ := u.User.Password()
 		creds := base64.StdEncoding.EncodeToString([]byte(u.User.Username() + ":" + pass))
