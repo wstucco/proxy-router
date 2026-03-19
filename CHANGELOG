@@ -1,0 +1,104 @@
+# Changelog
+
+## v0.2.0 (2026-03-19)
+
+### Enhancements
+
+- [Proxy] Add `User-Agent` and `Proxy-Connection: Keep-Alive` headers to upstream CONNECT requests, matching real client behavior
+- [Proxy] Add per-rule `dns` field — custom DNS servers used only for connections matching that rule, without touching system DNS settings
+- [Proxy] Add automatic auth scheme negotiation via `proxyplease` — transparently handles Basic, NTLM, and Negotiate per-connection by inspecting `Proxy-Authenticate` on 407 responses
+- [Config] Add `upstream_domain` field for Active Directory NTLM auth — keeps the upstream URL clean and parseable
+- [Router] Log collapsed to single line per request — host shown only on rule match
+
+
+### Bug fixes
+
+- [Proxy] Fix recurring 407 Proxy Authentication Required after ~45 minutes — upstream switches from Basic to Negotiate on session expiry, now handled transparently
+- [Proxy] Fix hang on CONNECT when upstream requires NTLM and domain is not provided
+- [Proxy] Fix upstream URL parsing failure with `domain\user` or `domain/user` format in credentials
+- [Proxy] Fix 407 authentication failures caused by missing `Proxy-Connection: Keep-Alive` header in CONNECT tunnel
+
+---
+
+## v0.1.5 (2026-03-19)
+
+### Enhancements
+
+- [Proxy] Add per-rule `dns` field — custom DNS servers used only for connections matching that rule, without touching system DNS settings
+- [Proxy] Add comprehensive logging to all proxy error paths — 502 failures now include the exact reason
+- [Config] Introduce `Decision` type returned by `Decide()`, carrying both action and DNS servers
+- [Router] Add deduplicating logger — repeated identical entries are suppressed and summarized every 100 occurrences
+- [Network] Add 250ms debounce and same-value guard to `networkDidChange` to coalesce rapid network events
+- [Network] Move SSID cache seeding from `init()` to `StartNetworkListener()` — binary startup is now side-effect free for subcommands like `completion`, `version`, `help`
+- [CLI] Add `unknown command` error for unrecognized subcommands instead of silently falling back to `run`
+- [CLI] Redact upstream proxy password in logs using `url.Redacted()`
+
+### Bug fixes
+
+- [Proxy] Fix 502 errors caused by upstream proxy hostname DNS resolution failures on network switch
+- [Network] Fix SSID change event firing twice per network transition due to duplicate `SCDynamicStore` key registration
+- [Completion] Fix `completion bash` exiting with code 1 during Homebrew install due to `init()` side effects
+
+---
+
+## v0.1.4 (2026-03-19)
+
+### Enhancements
+
+- [CI] Package darwin-arm64 binary as `.tar.gz` archive instead of bare binary
+- [CI] Update release asset and Homebrew formula URL to use archive
+
+### Bug fixes
+
+- [Formula] Fix Homebrew install failure caused by bare binary URL — Homebrew requires an archive format
+
+---
+
+## v0.1.3 (2026-03-18)
+
+### Enhancements
+
+- [Formula] Streamline shell completion generation and config file creation in Homebrew formula
+- [Network] Improve network listener initialization — `SCDynamicStore` setup is now deferred to `StartNetworkListener()`
+
+### Bug fixes
+
+- [CI] Fix Homebrew tap push authentication using explicit token URL in `git push`
+
+---
+
+## v0.1.2 (2026-03-18)
+
+### Bug fixes
+
+- [Formula] Fix shell completion installation path in Homebrew formula using `buildpath`
+- [Formula] Move `zap` stanza outside `caveats` block
+
+---
+
+## v0.1.1 (2026-03-18)
+
+### Enhancements
+
+- [Formula] Install shell completions to Homebrew global completions directories during `brew install`
+
+---
+
+## v0.1.0 (2026-03-18)
+
+### Enhancements
+
+- [Formula] Add `zap` stanza to Homebrew formula to remove config and log files on uninstall
+- [Install] Auto-install shell completions for bash, zsh, and fish during `proxy-router install`
+- [CI] Auto-update Homebrew tap formula on release — computes sha256 and pushes updated formula
+- [Brew] Add Homebrew formula with `brew services` support and `post_install` config generation
+- [CI] Add GitHub Actions pipeline — build on `macos-14`, release on tag, auto-update tap
+- [CLI] Add shell completions for zsh, bash, and fish via `proxy-router completion <shell>`
+- [CLI] Add `install` / `uninstall` commands with LaunchAgent support and auto-detected install prefix
+- [CLI] Add `-listen` flag on `run` to override listen address for local dev
+- [Proxy] Add Basic auth support for authenticated upstream proxies (`http://user:pass@host:port`)
+- [Proxy] Initial implementation — HTTP and HTTPS (`CONNECT`) proxying with rule-based routing
+- [Router] Rule matching on SSID, domain suffix, and IP with AND logic
+- [Router] Hot config reload — file watched for changes (1s poll) and on `SIGHUP`
+- [Network] macOS network change listener via `SCDynamicStore` — SSID cache updated on network events with zero per-request shell-outs
+- [Network] Correct Wi-Fi SSID detection via `ipconfig getsummary` for macOS 15.x compatibility

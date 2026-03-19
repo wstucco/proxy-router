@@ -1,6 +1,10 @@
 # proxy-router
 
-A lightweight local proxy (`localhost:32000`) that forwards connections to an upstream proxy or goes direct, based on configurable rules evaluated per-request.
+A lightweight local proxy (`localhost:1337`) that forwards connections to an upstream proxy or goes direct, based on configurable rules evaluated per-request.
+
+## Changelog
+
+See [CHANGELOG](CHANGELOG) for the full history.
 
 ## Features
 
@@ -11,6 +15,30 @@ A lightweight local proxy (`localhost:32000`) that forwards connections to an up
 - macOS network change listener via `SCDynamicStore` — SSID cache updated on network events
 - Brew service and manual LaunchAgent support
 
+## Upstream proxy authentication
+
+proxy-router automatically negotiates the correct authentication scheme (Basic, NTLM, Negotiate) by inspecting the upstream proxy's response — no manual configuration needed.
+
+Credentials are specified in the upstream URL:
+
+```json
+"upstream": "http://user:password@proxy.corp.com:8080"
+```
+
+### Active Directory / NTLM
+
+If the proxy requires NTLM authentication on an Active Directory network, set the domain separately via `upstream_domain`:
+
+```json
+{
+  "upstream": "http://lei00015:password@proxyu.corp.it:80",
+  "upstream_domain": "DIREZIONE"
+}
+```
+
+Do not encode the domain in the username in the URL — this causes URL parsing failures. Use `upstream_domain` instead.
+
+The domain is required for NTLM. Without it, Basic auth may work initially but fail after the session expires and the proxy switches to Negotiate.
 ## Install
 
 ### Homebrew (recommended)
@@ -88,7 +116,7 @@ All matchers in a rule must match (AND logic). If no rule matches, `default` is 
 
 ```json
 {
-  "listen": "localhost:32000",
+  "listen": "localhost:1337",
   "upstream": "http://user:pass@corporate-proxy:8080",
   "default": "direct",
   "rules": [
