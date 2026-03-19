@@ -15,6 +15,76 @@ See [CHANGELOG](CHANGELOG) for the full history.
 - macOS network change listener via `SCDynamicStore` — SSID cache updated on network events
 - Brew service and manual LaunchAgent support
 
+## How it works
+
+proxy-router sits at `localhost:1337` and intercepts all HTTP/HTTPS traffic routed through it. For each connection it evaluates the configured rules top-to-bottom and decides whether to forward the connection to an upstream proxy or connect directly.
+
+Rules can match on the current Wi-Fi SSID, destination hostname, or destination IP. This makes it ideal for automatically switching between a corporate proxy at the office and a direct connection at home, without changing any system settings manually.
+
+## Setting up the proxy
+
+### System-wide (recommended)
+
+Point macOS system proxy at proxy-router so all applications use it automatically.
+
+Via System Settings → Network → (your interface) → Details → Proxies:
+- Enable **Web Proxy (HTTP)**: `localhost` port `1337`
+- Enable **Secure Web Proxy (HTTPS)**: `localhost` port `1337`
+
+Or via the command line:
+```bash
+# Wi-Fi
+networksetup -setwebproxy Wi-Fi localhost 1337
+networksetup -setsecurewebproxy Wi-Fi localhost 1337
+
+# To disable
+networksetup -setwebproxystate Wi-Fi off
+networksetup -setsecurewebproxystate Wi-Fi off
+```
+
+### Per-application
+
+Some applications allow configuring a proxy independently of the system settings.
+
+**curl:**
+```bash
+curl --proxy http://localhost:1337 https://example.com
+# or set permanently
+export http_proxy=http://localhost:1337
+export https_proxy=http://localhost:1337
+```
+
+**git:**
+```bash
+git config --global http.proxy http://localhost:1337
+git config --global https.proxy http://localhost:1337
+# to remove
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+```
+
+**npm:**
+```bash
+npm config set proxy http://localhost:1337
+npm config set https-proxy http://localhost:1337
+```
+
+**Java / Maven** (`~/.m2/settings.xml`):
+```xml
+<proxies>
+  <proxy>
+    <active>true</active>
+    <protocol>http</protocol>
+    <host>localhost</host>
+    <port>1337</port>
+  </proxy>
+</proxies>
+```
+
+**IntelliJ IDEA / GoLand:**
+Settings → Appearance & Behavior → System Settings → HTTP Proxy → Manual proxy configuration:
+- Host: `localhost`, Port: `1337`
+
 ## Upstream proxy authentication
 
 proxy-router automatically negotiates the correct authentication scheme (Basic, NTLM, Negotiate) by inspecting the upstream proxy's response — no manual configuration needed.
@@ -39,6 +109,7 @@ If the proxy requires NTLM authentication on an Active Directory network, set th
 Do not encode the domain in the username in the URL — this causes URL parsing failures. Use `upstream_domain` instead.
 
 The domain is required for NTLM. Without it, Basic auth may work initially but fail after the session expires and the proxy switches to Negotiate.
+
 ## Install
 
 ### Homebrew (recommended)
@@ -66,14 +137,14 @@ proxy-router install
 ## Commands
 
 ```
-proxy-router run                        Start the proxy
-proxy-router run -listen localhost:33000 -config ~/myconf.json
-proxy-router install                    Write config, install completions, register LaunchAgent
-proxy-router uninstall                  Deregister LaunchAgent, remove completions (keeps config)
-proxy-router uninstall --prune          Remove everything including config
-proxy-router completion <zsh|bash|fish> Print completion script
-proxy-router version                    Print version
-proxy-router help                       Show help
+proxy-router run                         Start the proxy
+proxy-router run -listen localhost:1337 -config ~/myconf.json
+proxy-router install                     Write config, install completions, register LaunchAgent
+proxy-router uninstall                   Deregister LaunchAgent, remove completions (keeps config)
+proxy-router uninstall --prune           Remove everything including config
+proxy-router completion <zsh|bash|fish>  Print completion script
+proxy-router version                     Print version
+proxy-router help                        Show help
 ```
 
 ## Paths
@@ -101,7 +172,7 @@ proxy-router help                       Show help
 Run with a custom config and port without installing anything:
 
 ```bash
-proxy-router run -config ~/myconf.json -listen localhost:33000
+proxy-router run -config ~/myconf.json -listen localhost:1338
 ```
 
 ## Config
@@ -111,18 +182,21 @@ Rules are evaluated **top-to-bottom**; the first match wins. Each rule can match
 - `ssids` — current Wi-Fi SSID (case-insensitive)
 - `domains` — destination hostname suffix (`corp.com` matches `jira.corp.com`)
 - `ips` — destination IP (exact match)
+- `dns` — custom DNS servers to use for this rule (optional, does not affect system DNS)
 
 All matchers in a rule must match (AND logic). If no rule matches, `default` is used.
 
 ```json
 {
   "listen": "localhost:1337",
-  "upstream": "http://username:pass@corporate-proxy:8080",
+  "upstream": "http://username:password@corporate-proxy:8080",
+  "upstream_domain": "DOMAIN",
   "default": "direct",
   "rules": [
     {
       "ssids": ["OfficeWifi", "CorpVPN"],
-      "action": "upstream"
+      "action": "upstream",
+      "dns": ["10.0.0.1", "10.0.0.2"]
     },
     {
       "domains": ["internal.corp.com", "jira.corp.com"],
@@ -152,17 +226,6 @@ proxy-router completion bash > ~/.local/share/bash-completion/completions/proxy-
 # fish
 proxy-router completion fish > ~/.config/fish/completions/proxy-router.fish
 ```
-
-## Releasing
-
-Tag a commit to trigger a GitHub Actions build and release:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The CI will build the binary, create a GitHub release, and automatically update the Homebrew formula in `wstucco/homebrew-tap`. Requires a `HOMEBREW_TAP_TOKEN` secret (GitHub PAT with repo write access to the tap).
 
 ## Build notes
 
