@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -289,6 +290,16 @@ func removeCompletions() {
 
 // ─── run ──────────────────────────────────────────────────────────────────────
 
+// redactURL replaces user:password in a URL with user:***.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	// Use Redacted() which replaces password with xxxxx without URL-encoding
+	return u.Redacted()
+}
+
 func cmdRun(args []string) {
 	p := detectPaths()
 
@@ -311,7 +322,7 @@ func cmdRun(args []string) {
 		c.Listen = *listen
 	}
 	log.Printf("loaded config: listen=%s upstream=%s default=%s rules=%d",
-		c.Listen, c.Upstream, c.Default, len(c.Rules))
+		c.Listen, redactURL(c.Upstream), c.Default, len(c.Rules))
 
 	var cfgPtr atomic.Pointer[config.Config]
 	cfgPtr.Store(c)
@@ -546,6 +557,7 @@ func main() {
 	case "help", "-h", "--help":
 		printHelp()
 	default:
-		cmdRun(os.Args[1:])
+		fmt.Fprintf(os.Stderr, "unknown command %q\nRun 'proxy-router help' for usage.\n", os.Args[1])
+		os.Exit(1)
 	}
 }

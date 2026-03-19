@@ -20,15 +20,14 @@ static SCDynamicStoreRef createStore(void *info) {
 }
 
 static void startListening(SCDynamicStoreRef store) {
+    // Single pattern key matching any interface AirPort state
     CFStringRef key = SCDynamicStoreKeyCreateNetworkInterfaceEntity(
         NULL,
         kSCDynamicStoreDomainState,
         kSCCompAnyRegex,
         kSCEntNetAirPort
     );
-    CFStringRef keyWifi = CFSTR("State:/Network/Interface/en0/AirPort");
-
-    CFArrayRef keys = CFArrayCreate(NULL, (const void *[]){key, keyWifi}, 2, &kCFTypeArrayCallBacks);
+    CFArrayRef keys = CFArrayCreate(NULL, (const void *[]){key}, 1, &kCFTypeArrayCallBacks);
     SCDynamicStoreSetNotificationKeys(store, NULL, keys);
     CFRelease(keys);
     CFRelease(key);
@@ -44,6 +43,7 @@ import "C"
 import (
 	"log"
 	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -59,15 +59,23 @@ func CurrentSSID() string {
 //export networkDidChange
 func networkDidChange(store C.SCDynamicStoreRef, changedKeys C.CFArrayRef, info unsafe.Pointer) {
 	_, _, _ = store, changedKeys, info
-	ssid := fetchSSID()
-	cachedSSID.Store(ssid)
-	log.Printf("[network] SSID changed → %q", ssid)
+	// Debounce: wait 250ms before reading SSID to let the network settle
+	// and coalesce multiple rapid events into one
+	go func() {
+		time.Sleep(250 * time.Millisecond)
+		ssid := fetchSSID()
+		prev, _ := cachedSSID.Load().(string)
+		if ssid == prev {
+			return
+		}
+		cachedSSID.Store(ssid)
+		log.Printf("[network] SSID changed → %q", ssid)
+	}()
 }
 
 // StartNetworkListener seeds the SSID cache and then blocks listening for
 // network changes. Run it in a goroutine from cmdRun only.
 func StartNetworkListener() {
-	// Seed cache on first call
 	cachedSSID.Store(fetchSSID())
 
 	store := C.createStore(nil)

@@ -9,10 +9,10 @@ import (
 
 // Config is the top-level configuration for proxy-router.
 type Config struct {
-	Listen   string     `json:"listen"`    // e.g. "localhost:32000"
-	Upstream string     `json:"upstream"`  // e.g. "http://corporate:8080" or "socks5://..."
-	Rules    []Rule     `json:"rules"`     // evaluated top-to-bottom, first match wins
-	Default  Action     `json:"default"`   // "direct" or "upstream"
+	Listen   string `json:"listen"`   // e.g. "localhost:32000"
+	Upstream string `json:"upstream"` // e.g. "http://corporate:8080"
+	Rules    []Rule `json:"rules"`    // evaluated top-to-bottom, first match wins
+	Default  Action `json:"default"`  // "direct" or "upstream"
 }
 
 // Rule matches traffic and decides what to do with it.
@@ -22,7 +22,14 @@ type Rule struct {
 	IPs     []string `json:"ips,omitempty"`     // exact or CIDR match
 	SSIDs   []string `json:"ssids,omitempty"`   // current Wi-Fi SSID (case-insensitive)
 
-	Action Action `json:"action"` // "direct" or "upstream"
+	Action Action   `json:"action"`        // "direct" or "upstream"
+	DNS    []string `json:"dns,omitempty"` // custom DNS servers for this rule e.g. ["10.0.0.1", "10.0.0.2"]
+}
+
+// Decision is the result of rule evaluation.
+type Decision struct {
+	Action Action
+	DNS    []string // DNS servers to use, nil means use system default
 }
 
 type Action string
@@ -50,7 +57,7 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// DefaultConfig returns a commented example config as JSON string.
+// DefaultConfig returns an example config as JSON string.
 func DefaultConfig() string {
 	cfg := Config{
 		Listen:   "localhost:32000",
@@ -60,6 +67,7 @@ func DefaultConfig() string {
 			{
 				SSIDs:  []string{"OfficeWifi", "CorpVPN"},
 				Action: ActionUpstream,
+				DNS:    []string{"10.0.0.1", "10.0.0.2"},
 			},
 			{
 				Domains: []string{"internal.corp.com", "jira.corp.com"},
@@ -77,7 +85,6 @@ func DefaultConfig() string {
 
 // MatchDomain returns true if host matches any of the domain suffixes.
 func MatchDomain(host string, domains []string) bool {
-	// strip port if present
 	if idx := strings.LastIndex(host, ":"); idx != -1 {
 		host = host[:idx]
 	}
