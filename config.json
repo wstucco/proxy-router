@@ -1,5 +1,5 @@
 {
-  "listen": "localhost:32000",
+  "listen": "localhost:1337",
   "upstream": "http://corporate-proxy:8080",
   "default": "direct",
   "rules": [

@@ -9,10 +9,11 @@ import (
 
 // Config is the top-level configuration for proxy-router.
 type Config struct {
-	Listen   string `json:"listen"`   // e.g. "localhost:32000"
-	Upstream string `json:"upstream"` // e.g. "http://corporate:8080"
-	Rules    []Rule `json:"rules"`    // evaluated top-to-bottom, first match wins
-	Default  Action `json:"default"`  // "direct" or "upstream"
+	Listen         string `json:"listen"`                    // e.g. "localhost:1337"
+	Upstream       string `json:"upstream"`                  // e.g. "http://user:pass@corporate:8080"
+	UpstreamDomain string `json:"upstream_domain,omitempty"` // AD domain for NTLM auth e.g. "DIREZIONE"
+	Rules          []Rule `json:"rules"`                     // evaluated top-to-bottom, first match wins
+	Default        Action `json:"default"`                   // "direct" or "upstream"
 }
 
 // Rule matches traffic and decides what to do with it.
@@ -49,7 +50,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	if cfg.Listen == "" {
-		cfg.Listen = "localhost:32000"
+		cfg.Listen = "localhost:1337"
 	}
 	if cfg.Default == "" {
 		cfg.Default = ActionDirect
@@ -60,9 +61,10 @@ func Load(path string) (*Config, error) {
 // DefaultConfig returns an example config as JSON string.
 func DefaultConfig() string {
 	cfg := Config{
-		Listen:   "localhost:32000",
-		Upstream: "http://corporate-proxy:8080",
-		Default:  ActionDirect,
+		Listen:         "localhost:1337",
+		Upstream:       "http://corporate-proxy:8080",
+		UpstreamDomain: "",
+		Default:        ActionDirect,
 		Rules: []Rule{
 			{
 				SSIDs:  []string{"OfficeWifi", "CorpVPN"},
