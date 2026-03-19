@@ -1,11 +1,11 @@
 package router
 
 /*
-#cgo LDFLAGS: -framework SystemConfiguration -framework CoreFoundation
+#cgo LDFLAGS: -framework SystemConfiguration -framework CoreFoundation -framework Security
 
-#include <SystemConfiguration/SCDynamicStore.h>
-#include <SystemConfiguration/SCDynamicStoreKey.h>
+#include <SystemConfiguration/SystemConfiguration.h>
 #include <CoreFoundation/CoreFoundation.h>
+#include <Security/Authorization.h>
 
 extern void networkDidChange(SCDynamicStoreRef store, CFArrayRef changedKeys, void *info);
 
@@ -21,7 +21,6 @@ static SCDynamicStoreRef createStore(void *info) {
 }
 
 static void startListening(SCDynamicStoreRef store) {
-    // Single pattern key matching any interface AirPort state
     CFStringRef key = SCDynamicStoreKeyCreateNetworkInterfaceEntity(
         NULL,
         kSCDynamicStoreDomainState,
@@ -40,7 +39,6 @@ static void startListening(SCDynamicStoreRef store) {
     CFRunLoopRun();
 }
 */
-
 import "C"
 import (
 	"log"
@@ -61,8 +59,6 @@ func CurrentSSID() string {
 //export networkDidChange
 func networkDidChange(store C.SCDynamicStoreRef, changedKeys C.CFArrayRef, info unsafe.Pointer) {
 	_, _, _ = store, changedKeys, info
-	// Debounce: wait 250ms before reading SSID to let the network settle
-	// and coalesce multiple rapid events into one
 	go func() {
 		time.Sleep(250 * time.Millisecond)
 		ssid := fetchSSID()
