@@ -1,11 +1,11 @@
 package router
 
 /*
-#cgo LDFLAGS: -framework SystemConfiguration -framework CoreFoundation -framework Security
+#cgo LDFLAGS: -framework SystemConfiguration -framework CoreFoundation
 
-#include <SystemConfiguration/SystemConfiguration.h>
+#include <SystemConfiguration/SCDynamicStore.h>
+#include <SystemConfiguration/SCDynamicStoreKey.h>
 #include <CoreFoundation/CoreFoundation.h>
-#include <Security/Authorization.h>
 
 extern void networkDidChange(SCDynamicStoreRef store, CFArrayRef changedKeys, void *info);
 
@@ -40,6 +40,7 @@ static void startListening(SCDynamicStoreRef store) {
     CFRunLoopRun();
 }
 */
+
 import "C"
 import (
 	"log"
