@@ -1,9 +1,7 @@
 package proxy
 
 import (
-	"bufio"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/aus/proxyplease"
 
 	"github.com/wstucco/proxy-router/internal/config"
 	"github.com/wstucco/proxy-router/internal/router"
@@ -42,7 +42,7 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 
 	if decision.Action == config.ActionUpstream && s.cfg.Upstream != "" {
 		log.Printf("[proxy] CONNECT %s via upstream", r.Host)
-		targetConn, err = dialViaUpstream(s.cfg.Upstream, r.Host, dialer)
+		targetConn, err = dialViaUpstream(s.cfg.Upstream, s.cfg.UpstreamDomain, r.Host, dialer)
 	} else {
 		log.Printf("[proxy] CONNECT %s direct", r.Host)
 		targetConn, err = dialer.DialContext(context.Background(), "tcp", r.Host)
@@ -129,6 +129,38 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, resp.Body)
 }
 
+// dialViaUpstream opens a TCP tunnel through an upstream proxy.
+// Uses proxyplease which auto-negotiates auth: tries Basic first,
+// then falls back to NTLM/Negotiate transparently on the same connection.
+func dialViaUpstream(upstream, domain, target string, dialer *net.Dialer) (net.Conn, error) {
+	u, err := url.Parse(upstream)
+	if err != nil {
+		return nil, fmt.Errorf("parsing upstream URL: %w", err)
+	}
+
+	var user, pass string
+	if u.User != nil {
+		user = u.User.Username()
+		pass, _ = u.User.Password()
+	}
+
+	log.Printf("[proxy] dialing upstream %s", u.Host)
+
+	dialCtx := proxyplease.NewDialContext(proxyplease.Proxy{
+		URL:      u,
+		Username: user,
+		Password: pass,
+		Domain:   domain,
+	})
+
+	conn, err := dialCtx(context.Background(), "tcp", target)
+	if err != nil {
+		return nil, fmt.Errorf("dialing upstream %s: %w", u.Host, err)
+	}
+
+	return conn, nil
+}
+
 // makeDialer returns a dialer using custom DNS servers if provided,
 // otherwise uses the system default resolver.
 func makeDialer(dnsServers []string) *net.Dialer {
@@ -136,7 +168,6 @@ func makeDialer(dnsServers []string) *net.Dialer {
 		return &net.Dialer{Timeout: 10 * time.Second}
 	}
 
-	// Build DNS addresses with port 53
 	addrs := make([]string, len(dnsServers))
 	for i, s := range dnsServers {
 		if _, _, err := net.SplitHostPort(s); err != nil {
@@ -150,7 +181,6 @@ func makeDialer(dnsServers []string) *net.Dialer {
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 			d := &net.Dialer{Timeout: 5 * time.Second}
-			// Try each DNS server in order
 			var lastErr error
 			for _, addr := range addrs {
 				conn, err := d.DialContext(ctx, "udp", addr)
@@ -169,47 +199,4 @@ func makeDialer(dnsServers []string) *net.Dialer {
 		Timeout:  10 * time.Second,
 		Resolver: resolver,
 	}
-}
-
-// dialViaUpstream opens a TCP tunnel through an HTTP CONNECT upstream proxy.
-func dialViaUpstream(upstream, target string, dialer *net.Dialer) (net.Conn, error) {
-	u, err := url.Parse(upstream)
-	if err != nil {
-		return nil, fmt.Errorf("parsing upstream URL: %w", err)
-	}
-
-	proxyHost := u.Host
-	log.Printf("[proxy] dialing upstream %s", proxyHost)
-	conn, err := dialer.DialContext(context.Background(), "tcp", proxyHost)
-	if err != nil {
-		return nil, fmt.Errorf("dialing upstream %s: %w", proxyHost, err)
-	}
-
-	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: Mozilla/5.0\r\nProxy-Connection: Keep-Alive\r\n", target, target)
-	if u.User != nil {
-		pass, _ := u.User.Password()
-		creds := base64.StdEncoding.EncodeToString([]byte(u.User.Username() + ":" + pass))
-		req += "Proxy-Authorization: Basic " + creds + "\r\n"
-	}
-	req += "\r\n"
-
-	if _, err := conn.Write([]byte(req)); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("sending CONNECT to upstream: %w", err)
-	}
-
-	br := bufio.NewReader(conn)
-	resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodConnect})
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("reading upstream CONNECT response: %w", err)
-	}
-	resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		conn.Close()
-		return nil, fmt.Errorf("upstream returned %d %s", resp.StatusCode, resp.Status)
-	}
-
-	return conn, nil
 }
