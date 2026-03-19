@@ -10,7 +10,7 @@ See [CHANGELOG](CHANGELOG) for the full history.
 
 - HTTP and HTTPS (`CONNECT`) proxying
 - Rule-based routing: forward upstream or go direct based on SSID, hostname, or IP
-- Authenticated upstream proxies (`http://user:pass@host:port`)
+- Authenticated upstream proxies (`http://username:pass@host:port`)
 - Hot config reload — save the file and changes apply within 1 second (or send `SIGHUP`)
 - macOS network change listener via `SCDynamicStore` — SSID cache updated on network events
 - Brew service and manual LaunchAgent support
@@ -22,7 +22,7 @@ proxy-router automatically negotiates the correct authentication scheme (Basic, 
 Credentials are specified in the upstream URL:
 
 ```json
-"upstream": "http://user:password@proxy.corp.com:8080"
+"upstream": "http://username:password@proxy.corp.com:8080"
 ```
 
 ### Active Directory / NTLM
@@ -31,8 +31,8 @@ If the proxy requires NTLM authentication on an Active Directory network, set th
 
 ```json
 {
-  "upstream": "http://lei00015:password@proxyu.corp.it:80",
-  "upstream_domain": "DIREZIONE"
+  "upstream": "http://username:password@proxyu.corp.it:80",
+  "upstream_domain": "DOMAIN"
 }
 ```
 
@@ -117,7 +117,7 @@ All matchers in a rule must match (AND logic). If no rule matches, `default` is 
 ```json
 {
   "listen": "localhost:1337",
-  "upstream": "http://user:pass@corporate-proxy:8080",
+  "upstream": "http://username:pass@corporate-proxy:8080",
   "default": "direct",
   "rules": [
     {
