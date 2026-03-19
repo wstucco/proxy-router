@@ -1,6 +1,6 @@
 module github.com/wstucco/proxy-router
 
-go 1.25.0
+go 1.23.1
 
 require github.com/aus/proxyplease v0.1.0
 
