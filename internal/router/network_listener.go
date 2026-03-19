@@ -2,7 +2,6 @@ package router
 
 /*
 #cgo LDFLAGS: -framework SystemConfiguration -framework CoreFoundation -framework Security
-#cgo CFLAGS: -x objective-c
 
 #include <SystemConfiguration/SystemConfiguration.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -11,34 +10,34 @@ package router
 extern void networkDidChange(SCDynamicStoreRef store, CFArrayRef changedKeys, void *info);
 
 static SCDynamicStoreRef createStore(void *info) {
-SCDynamicStoreContext ctx = {0, info, NULL, NULL, NULL};
-SCDynamicStoreRef store = SCDynamicStoreCreate(
-NULL,
-CFSTR("proxy-router"),
-networkDidChange,
-&ctx
-);
-return store;
+    SCDynamicStoreContext ctx = {0, info, NULL, NULL, NULL};
+    SCDynamicStoreRef store = SCDynamicStoreCreate(
+        NULL,
+        CFSTR("proxy-router"),
+        networkDidChange,
+        &ctx
+    );
+    return store;
 }
 
 static void startListening(SCDynamicStoreRef store) {
-// Single pattern key matching any interface AirPort state
-CFStringRef key = SCDynamicStoreKeyCreateNetworkInterfaceEntity(
-NULL,
-kSCDynamicStoreDomainState,
-kSCCompAnyRegex,
-kSCEntNetAirPort
-);
-CFArrayRef keys = CFArrayCreate(NULL, (const void *[]){key}, 1, &kCFTypeArrayCallBacks);
-SCDynamicStoreSetNotificationKeys(store, NULL, keys);
-CFRelease(keys);
-CFRelease(key);
+    // Single pattern key matching any interface AirPort state
+    CFStringRef key = SCDynamicStoreKeyCreateNetworkInterfaceEntity(
+        NULL,
+        kSCDynamicStoreDomainState,
+        kSCCompAnyRegex,
+        kSCEntNetAirPort
+    );
+    CFArrayRef keys = CFArrayCreate(NULL, (const void *[]){key}, 1, &kCFTypeArrayCallBacks);
+    SCDynamicStoreSetNotificationKeys(store, NULL, keys);
+    CFRelease(keys);
+    CFRelease(key);
 
-CFRunLoopSourceRef src = SCDynamicStoreCreateRunLoopSource(NULL, store, 0);
-CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopDefaultMode);
-CFRelease(src);
+    CFRunLoopSourceRef src = SCDynamicStoreCreateRunLoopSource(NULL, store, 0);
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopDefaultMode);
+    CFRelease(src);
 
-CFRunLoopRun();
+    CFRunLoopRun();
 }
 */
 import "C"
