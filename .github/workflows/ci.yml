@@ -76,66 +76,65 @@ jobs:
         with:
           name: proxy-router-darwin-arm64
 
+
       - name: Compute sha256
         id: sha256
         run: |
           ARCHIVE="proxy-router-${{ github.ref_name }}-darwin-arm64.tar.gz"
           SHA=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
           echo "sha256=$SHA" >> $GITHUB_OUTPUT
-          echo "archive=$ARCHIVE" >> $GITHUB_OUTPUT
 
       - name: Extract changelog for this version
         id: changelog
         run: |
           VERSION="${{ github.ref_name }}"
-          BODY=$(awk "/^## ${VERSION} /,/^## v[0-9]/" CHANGELOG \
+          # Extract changelog section for this version
+          awk "/^## ${VERSION} /,/^## v[0-9]/" CHANGELOG \
             | grep -v "^## v[0-9]" \
-            | sed '/^$/N;/^\n$/d')
-          BODY="${BODY}
+            | sed '/^$/N;/^\n$/d' > /tmp/changelog_body.txt
+          # Append install instructions as plain text (no backtick quoting issues)
+          printf '\n---\n\n' >> /tmp/changelog_body.txt
+          printf '### Install via Homebrew (recommended)\n' >> /tmp/changelog_body.txt
+          printf '```\n' >> /tmp/changelog_body.txt
+          printf 'brew tap wstucco/tap\n' >> /tmp/changelog_body.txt
+          printf 'brew install proxy-router\n' >> /tmp/changelog_body.txt
+          printf 'brew services start proxy-router\n' >> /tmp/changelog_body.txt
+          printf 'proxy-router install\n' >> /tmp/changelog_body.txt
+          printf '```\n\n' >> /tmp/changelog_body.txt
+          printf '### Manual install\n' >> /tmp/changelog_body.txt
+          printf '```\n' >> /tmp/changelog_body.txt
+          printf 'tar -xzf proxy-router-%s-darwin-arm64.tar.gz\n' "${VERSION}" >> /tmp/changelog_body.txt
+          printf 'sudo mv proxy-router /usr/local/bin/proxy-router\n' >> /tmp/changelog_body.txt
+          printf 'proxy-router install\n' >> /tmp/changelog_body.txt
+          printf '```\n' >> /tmp/changelog_body.txt
+          # Write to GitHub output
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/changelog_body.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
----
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.body }}
+          files: proxy-router-${{ github.ref_name }}-darwin-arm64.tar.gz
 
-### Install via Homebrew (recommended)
-  \`\`\`
-  brew tap wstucco/tap
-  brew install proxy-router
-  brew services start proxy-router
-  proxy-router install  # installs shell completions
-  \`\`\`
-  
-  ### Manual install
-  \`\`\`
-  tar -xzf proxy-router-${VERSION}-darwin-arm64.tar.gz
-  sudo mv proxy-router /usr/local/bin/proxy-router
-  proxy-router install
-  \`\`\`"
-  echo "body<<EOF" >> $GITHUB_OUTPUT
-  echo "$BODY" >> $GITHUB_OUTPUT
-  echo "EOF" >> $GITHUB_OUTPUT
+      - name: Update Homebrew formula
+        env:
+          VERSION: ${{ github.ref_name }}
+          SHA256: ${{ steps.sha256.outputs.sha256 }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git tap
 
-- name: Create GitHub release
-  uses: softprops/action-gh-release@v2
-  with:
-    token: ${{ secrets.GITHUB_TOKEN }}
-    name: Release ${{ github.ref_name }}
-    body: ${{ steps.changelog.outputs.body }}
-    files: proxy-router-${{ github.ref_name }}-darwin-arm64.tar.gz
+          FORMULA="tap/Formula/proxy-router.rb"
+          sed -i '' "s|version \".*\"|version \"${VERSION#v}\"|" "$FORMULA"
+          sed -i '' "s|sha256 \".*\"|sha256 \"$SHA256\"|" "$FORMULA"
 
-- name: Update Homebrew formula
-  env:
-    VERSION: ${{ github.ref_name }}
-    SHA256: ${{ steps.sha256.outputs.sha256 }}
-    TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-  run: |
-    git clone https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git tap
-    
-    FORMULA="tap/Formula/proxy-router.rb"
-    sed -i '' "s|version \".*\"|version \"${VERSION#v}\"|" "$FORMULA"
-    sed -i '' "s|sha256 \".*\"|sha256 \"$SHA256\"|" "$FORMULA"
-    
-    cd tap
-    git config user.name  "github-actions[bot]"
-    git config user.email "github-actions[bot]@users.noreply.github.com"
-    git add Formula/proxy-router.rb
-    git commit -m "proxy-router: update to ${VERSION}"
-    git push https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git HEAD:main
+          cd tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/proxy-router.rb
+          git commit -m "proxy-router: update to ${VERSION}"
+          git push https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git HEAD:main
