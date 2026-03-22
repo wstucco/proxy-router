@@ -57,16 +57,15 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
 
-	// Detect legacy format
+	// Detect and automatically migrate legacy format
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
-	if _, isLegacy := raw["upstream"]; isLegacy {
-		return nil, fmt.Errorf("legacy config format detected — please run `proxy-router migrate` or see https://github.com/wstucco/proxy-router/wiki/configuration")
-	}
-	if _, isLegacy := raw["rules"]; isLegacy {
-		return nil, fmt.Errorf("legacy config format detected — please run `proxy-router migrate` or see https://github.com/wstucco/proxy-router/wiki/configuration")
+	_, hasUpstream := raw["upstream"]
+	_, hasRules := raw["rules"]
+	if hasUpstream || hasRules {
+		return MigrateIfLegacy(path, data)
 	}
 
 	var cfg Config
