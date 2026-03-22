@@ -32,7 +32,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleCONNECT handles HTTPS tunneling (CONNECT method).
 func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 	decision := router.Decide(s.cfg, r.Host)
 	dialer := makeDialer(decision.DNS)
@@ -40,9 +39,9 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 	var targetConn net.Conn
 	var err error
 
-	if decision.Action == config.ActionUpstream && s.cfg.Upstream != "" {
+	if decision.ProxyURL != "" {
 		log.Printf("[proxy] CONNECT %s via upstream", r.Host)
-		targetConn, err = dialViaUpstream(s.cfg.Upstream, s.cfg.UpstreamDomain, r.Host, dialer)
+		targetConn, err = dialViaUpstream(decision.ProxyURL, decision.Domain, r.Host, dialer)
 	} else {
 		log.Printf("[proxy] CONNECT %s direct", r.Host)
 		targetConn, err = dialer.DialContext(context.Background(), "tcp", r.Host)
@@ -79,16 +78,15 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[proxy] CONNECT %s tunnel closed", r.Host)
 }
 
-// handleHTTP handles plain HTTP proxy requests.
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	decision := router.Decide(s.cfg, r.Host)
 	dialer := makeDialer(decision.DNS)
 
 	var transport http.RoundTripper
 
-	if decision.Action == config.ActionUpstream && s.cfg.Upstream != "" {
+	if decision.ProxyURL != "" {
 		log.Printf("[proxy] HTTP %s %s via upstream", r.Method, r.Host)
-		upstreamURL, err := url.Parse(s.cfg.Upstream)
+		upstreamURL, err := url.Parse(decision.ProxyURL)
 		if err != nil {
 			log.Printf("[proxy] HTTP %s: invalid upstream URL: %v", r.Host, err)
 			http.Error(w, "invalid upstream URL", http.StatusInternalServerError)
@@ -129,11 +127,8 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, resp.Body)
 }
 
-// dialViaUpstream opens a TCP tunnel through an upstream proxy.
-// Uses proxyplease which auto-negotiates auth: tries Basic first,
-// then falls back to NTLM/Negotiate transparently on the same connection.
-func dialViaUpstream(upstream, domain, target string, dialer *net.Dialer) (net.Conn, error) {
-	u, err := url.Parse(upstream)
+func dialViaUpstream(proxyURL, domain, target string, dialer *net.Dialer) (net.Conn, error) {
+	u, err := url.Parse(proxyURL)
 	if err != nil {
 		return nil, fmt.Errorf("parsing upstream URL: %w", err)
 	}
@@ -161,8 +156,6 @@ func dialViaUpstream(upstream, domain, target string, dialer *net.Dialer) (net.C
 	return conn, nil
 }
 
-// makeDialer returns a dialer using custom DNS servers if provided,
-// otherwise uses the system default resolver.
 func makeDialer(dnsServers []string) *net.Dialer {
 	if len(dnsServers) == 0 {
 		return &net.Dialer{Timeout: 10 * time.Second}

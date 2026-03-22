@@ -321,8 +321,8 @@ func cmdRun(args []string) {
 	if *listen != "" {
 		c.Listen = *listen
 	}
-	log.Printf("loaded config: listen=%s upstream=%s default=%s rules=%d",
-		c.Listen, redactURL(c.Upstream), c.Default, len(c.Rules))
+	log.Printf("loaded config: listen=%s locations=%d proxies=%d",
+		c.Listen, len(c.Locations), len(c.Proxies))
 
 	var cfgPtr atomic.Pointer[config.Config]
 	cfgPtr.Store(c)
@@ -337,7 +337,7 @@ func cmdRun(args []string) {
 			newCfg.Listen = *listen
 		}
 		cfgPtr.Store(newCfg)
-		log.Printf("[reload] config reloaded: rules=%d", len(newCfg.Rules))
+		log.Printf("[reload] config reloaded: locations=%d", len(newCfg.Locations))
 	}
 
 	go func() {

@@ -89,10 +89,11 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           # Extract changelog section for this version
-          awk "/^## ${VERSION} /{found=1; next} found && /^## v[0-9]/{exit} found{print}" CHANGELOG \
-          | sed '/^[[:space:]]*$/d' > /tmp/changelog_body.txt
+          awk "/^## ${VERSION} /,/^## v[0-9]/" CHANGELOG \
+            | grep -v "^## v[0-9]" \
+            | sed '/^$/N;/^\n$/d' > /tmp/changelog_body.txt
           # Append install instructions as plain text (no backtick quoting issues)
-          printf '\n\n' >> /tmp/changelog_body.txt
+          printf '\n---\n\n' >> /tmp/changelog_body.txt
           printf '### Install via Homebrew (recommended)\n' >> /tmp/changelog_body.txt
           printf '```\n' >> /tmp/changelog_body.txt
           printf 'brew tap wstucco/tap\n' >> /tmp/changelog_body.txt
