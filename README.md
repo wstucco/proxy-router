@@ -1,6 +1,6 @@
 # proxy-router
 
-A lightweight local proxy (`localhost:1337`) that forwards connections to an upstream proxy or goes direct, based on configurable rules evaluated per-request.
+A lightweight local proxy (`localhost:1337`) that forwards connections to an upstream proxy or goes direct, based on configurable locations evaluated per-request.
 
 ## Changelog
 
@@ -9,40 +9,52 @@ See [CHANGELOG](CHANGELOG) for the full history.
 ## Features
 
 - HTTP and HTTPS (`CONNECT`) proxying
-- Rule-based routing: forward upstream or go direct based on SSID, hostname, or IP
-- Authenticated upstream proxies (`http://username:pass@host:port`)
+- Location-based routing: forward to a named proxy or go direct based on SSID, hostname, or IP
+- Authenticated upstream proxies with automatic Basic/NTLM/Negotiate negotiation
 - Hot config reload — save the file and changes apply within 1 second (or send `SIGHUP`)
 - macOS network change listener via `SCDynamicStore` — SSID cache updated on network events
 - Brew service and manual LaunchAgent support
 
 ## How it works
 
-proxy-router sits at `localhost:1337` and intercepts all HTTP/HTTPS traffic routed through it. For each connection it evaluates the configured rules top-to-bottom and decides whether to forward the connection to an upstream proxy or connect directly.
+proxy-router sits at `localhost:1337` and intercepts all HTTP/HTTPS traffic routed through it. For each connection it evaluates the configured locations and decides whether to forward the connection to a named upstream proxy or connect directly.
 
-Rules can match on the current Wi-Fi SSID, destination hostname, or destination IP. This makes it ideal for automatically switching between a corporate proxy at the office and a direct connection at home, without changing any system settings manually.
+Locations match on the current Wi-Fi SSID, destination hostname, or destination IP. This makes it ideal for automatically switching between a corporate proxy at the office and a direct connection at home, without changing any system settings manually.
 
 ## Upstream proxy authentication
 
 proxy-router automatically negotiates the correct authentication scheme (Basic, NTLM, Negotiate) by inspecting the upstream proxy's response — no manual configuration needed.
 
-Credentials are specified in the upstream URL:
+Credentials are specified in the proxy URL inside the `proxies` map:
 
 ```json
-"upstream": "http://username:password@proxy.corp.com:8080"
+{
+  "proxies": {
+    "corp": "http://username:password@proxy.corp.com:8080"
+  }
+}
 ```
 
 ### Active Directory / NTLM
 
-If the proxy requires NTLM authentication on an Active Directory network, set the domain separately via `upstream_domain`:
+If the proxy requires NTLM authentication on an Active Directory network, set the domain on the location via `domain`:
 
 ```json
 {
-  "upstream": "http://username:password@proxyu.corp.it:80",
-  "upstream_domain": "DOMAIN"
+  "proxies": {
+    "corp": "http://username:password@proxyu.corp.it:80"
+  },
+  "locations": {
+    "work": {
+      "proxy": "corp",
+      "domain": "CORP",
+      "ssids": ["OfficeWifi"]
+    }
+  }
 }
 ```
 
-Do not encode the domain in the username in the URL — this causes URL parsing failures. Use `upstream_domain` instead.
+Do not encode the domain in the username in the URL — this causes URL parsing failures. Use the `domain` field on the location instead.
 
 The domain is required for NTLM. Without it, Basic auth may work initially but fail after the session expires and the proxy switches to Negotiate.
 
@@ -75,6 +87,7 @@ proxy-router install
 ```
 proxy-router run                         Start the proxy
 proxy-router run -listen localhost:1337 -config ~/myconf.json
+proxy-router migrate                     Migrate config from legacy format
 proxy-router install                     Write config, install completions, register LaunchAgent
 proxy-router uninstall                   Deregister LaunchAgent, remove completions (keeps config)
 proxy-router uninstall --prune           Remove everything including config
@@ -134,12 +147,12 @@ npm config set https-proxy http://localhost:1337
 **Java / Maven** (`~/.m2/settings.xml`):
 ```xml
 <proxies>
-    <proxy>
-        <active>true</active>
-        <protocol>http</protocol>
-        <host>localhost</host>
-        <port>1337</port>
-    </proxy>
+  <proxy>
+    <active>true</active>
+    <protocol>http</protocol>
+    <host>localhost</host>
+    <port>1337</port>
+  </proxy>
 </proxies>
 ```
 
@@ -179,7 +192,7 @@ proxy-router run -config ~/myconf.json -listen localhost:1338
 
 Locations are matched by SSID, IP, and/or domain (OR within each array, AND across arrays). The first matching location wins. If no location matches, `defaults` is used.
 
-`localhost`, `127.0.0.1`, and `::1` are always direct — they cannot be proxied.
+`localhost`, `127.0.0.1`, and `::1` are always direct — they cannot be proxied regardless of config.
 
 ```json
 {
@@ -246,8 +259,8 @@ proxy-router completion fish > ~/.config/fish/completions/proxy-router.fish
 Tag a commit to trigger a GitHub Actions build and release:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 The CI will build the binary, create a GitHub release, and automatically update the Homebrew formula in `wstucco/homebrew-tap`. Requires a `HOMEBREW_TAP_TOKEN` secret (GitHub PAT with repo write access to the tap).
