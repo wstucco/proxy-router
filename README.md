@@ -21,70 +21,6 @@ proxy-router sits at `localhost:1337` and intercepts all HTTP/HTTPS traffic rout
 
 Rules can match on the current Wi-Fi SSID, destination hostname, or destination IP. This makes it ideal for automatically switching between a corporate proxy at the office and a direct connection at home, without changing any system settings manually.
 
-## Setting up the proxy
-
-### System-wide (recommended)
-
-Point macOS system proxy at proxy-router so all applications use it automatically.
-
-Via System Settings → Network → (your interface) → Details → Proxies:
-- Enable **Web Proxy (HTTP)**: `localhost` port `1337`
-- Enable **Secure Web Proxy (HTTPS)**: `localhost` port `1337`
-
-Or via the command line:
-```bash
-# Wi-Fi
-networksetup -setwebproxy Wi-Fi localhost 1337
-networksetup -setsecurewebproxy Wi-Fi localhost 1337
-
-# To disable
-networksetup -setwebproxystate Wi-Fi off
-networksetup -setsecurewebproxystate Wi-Fi off
-```
-
-### Per-application
-
-Some applications allow configuring a proxy independently of the system settings.
-
-**curl:**
-```bash
-curl --proxy http://localhost:1337 https://example.com
-# or set permanently
-export http_proxy=http://localhost:1337
-export https_proxy=http://localhost:1337
-```
-
-**git:**
-```bash
-git config --global http.proxy http://localhost:1337
-git config --global https.proxy http://localhost:1337
-# to remove
-git config --global --unset http.proxy
-git config --global --unset https.proxy
-```
-
-**npm:**
-```bash
-npm config set proxy http://localhost:1337
-npm config set https-proxy http://localhost:1337
-```
-
-**Java / Maven** (`~/.m2/settings.xml`):
-```xml
-<proxies>
-  <proxy>
-    <active>true</active>
-    <protocol>http</protocol>
-    <host>localhost</host>
-    <port>1337</port>
-  </proxy>
-</proxies>
-```
-
-**IntelliJ IDEA / GoLand:**
-Settings → Appearance & Behavior → System Settings → HTTP Proxy → Manual proxy configuration:
-- Host: `localhost`, Port: `1337`
-
 ## Upstream proxy authentication
 
 proxy-router automatically negotiates the correct authentication scheme (Basic, NTLM, Negotiate) by inspecting the upstream proxy's response — no manual configuration needed.
@@ -147,6 +83,70 @@ proxy-router version                     Print version
 proxy-router help                        Show help
 ```
 
+## Setting up the proxy
+
+### System-wide (recommended)
+
+Point macOS system proxy at proxy-router so all applications use it automatically.
+
+Via System Settings → Network → (your interface) → Details → Proxies:
+- Enable **Web Proxy (HTTP)**: `localhost` port `1337`
+- Enable **Secure Web Proxy (HTTPS)**: `localhost` port `1337`
+
+Or via the command line:
+```bash
+# Wi-Fi
+networksetup -setwebproxy Wi-Fi localhost 1337
+networksetup -setsecurewebproxy Wi-Fi localhost 1337
+
+# To disable
+networksetup -setwebproxystate Wi-Fi off
+networksetup -setsecurewebproxystate Wi-Fi off
+```
+
+### Per-application
+
+Some applications allow configuring a proxy independently of the system settings.
+
+**curl:**
+```bash
+curl --proxy http://localhost:1337 https://example.com
+# or set permanently
+export http_proxy=http://localhost:1337
+export https_proxy=http://localhost:1337
+```
+
+**git:**
+```bash
+git config --global http.proxy http://localhost:1337
+git config --global https.proxy http://localhost:1337
+# to remove
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+```
+
+**npm:**
+```bash
+npm config set proxy http://localhost:1337
+npm config set https-proxy http://localhost:1337
+```
+
+**Java / Maven** (`~/.m2/settings.xml`):
+```xml
+<proxies>
+    <proxy>
+        <active>true</active>
+        <protocol>http</protocol>
+        <host>localhost</host>
+        <port>1337</port>
+    </proxy>
+</proxies>
+```
+
+**IntelliJ IDEA / GoLand:**
+Settings → Appearance & Behavior → System Settings → HTTP Proxy → Manual proxy configuration:
+- Host: `localhost`, Port: `1337`
+
 ## Paths
 
 ### Homebrew install
@@ -177,39 +177,53 @@ proxy-router run -config ~/myconf.json -listen localhost:1338
 
 ## Config
 
-Rules are evaluated **top-to-bottom**; the first match wins. Each rule can match on:
+Locations are matched by SSID, IP, and/or domain (OR within each array, AND across arrays). The first matching location wins. If no location matches, `defaults` is used.
 
-- `ssids` — current Wi-Fi SSID (case-insensitive)
-- `domains` — destination hostname suffix (`corp.com` matches `jira.corp.com`)
-- `ips` — destination IP (exact match)
-- `dns` — custom DNS servers to use for this rule (optional, does not affect system DNS)
-
-All matchers in a rule must match (AND logic). If no rule matches, `default` is used.
+`localhost`, `127.0.0.1`, and `::1` are always direct — they cannot be proxied.
 
 ```json
 {
   "listen": "localhost:1337",
-  "upstream": "http://username:password@corporate-proxy:8080",
-  "upstream_domain": "DOMAIN",
-  "default": "direct",
-  "rules": [
-    {
-      "ssids": ["OfficeWifi", "CorpVPN"],
-      "action": "upstream",
-      "dns": ["10.0.0.1", "10.0.0.2"]
+  "proxies": {
+    "corp": "http://username:password@corp-proxy:8080"
+  },
+  "defaults": {
+    "proxy": "direct",
+    "no_proxy": []
+  },
+  "locations": {
+    "work": {
+      "proxy": "corp",
+      "domain": "CORP",
+      "ssids": ["OfficeWifi", "OfficeWifi-5G"],
+      "ips": ["10.0.0.0/8"],
+      "dns": ["10.0.0.1", "10.0.0.2"],
+      "no_proxy": [".internal.corp.com", "192.168.0.0/24"]
     },
-    {
-      "domains": ["internal.corp.com", "jira.corp.com"],
-      "action": "upstream"
-    },
-    {
-      "domains": ["localhost"],
-      "ips": ["127.0.0.1", "::1"],
-      "action": "direct"
+    "co-working": {
+      "proxy": "corp",
+      "ssids": ["Barista"]
     }
-  ]
+  }
 }
 ```
+
+### Fields
+
+**Top-level:**
+- `listen` — address to listen on
+- `proxies` — named proxy URL map; referenced by locations and defaults
+- `defaults.proxy` — `"direct"` or a key in `proxies`; used when no location matches
+- `defaults.no_proxy` — additional destinations that always bypass the proxy
+
+**Location:**
+- `proxy` — key in `proxies` or a raw URL (required)
+- `domain` — Active Directory domain for NTLM auth
+- `ssids` — Wi-Fi SSID list (case-insensitive, OR logic)
+- `ips` — IP or CIDR list (OR logic)
+- `domains` — hostname suffix list (OR logic); `.corp.com` matches all subdomains
+- `dns` — custom DNS servers for this location (does not affect system DNS)
+- `no_proxy` — destinations to bypass proxy within this location; supports exact IP, CIDR, domain, `.domain` suffix, `*`
 
 ## Shell completions
 
@@ -226,6 +240,17 @@ proxy-router completion bash > ~/.local/share/bash-completion/completions/proxy-
 # fish
 proxy-router completion fish > ~/.config/fish/completions/proxy-router.fish
 ```
+
+## Releasing
+
+Tag a commit to trigger a GitHub Actions build and release:
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The CI will build the binary, create a GitHub release, and automatically update the Homebrew formula in `wstucco/homebrew-tap`. Requires a `HOMEBREW_TAP_TOKEN` secret (GitHub PAT with repo write access to the tap).
 
 ## Build notes
 

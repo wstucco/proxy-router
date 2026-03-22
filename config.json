@@ -1,23 +1,20 @@
 {
   "listen": "localhost:1337",
-  "upstream": "http://corporate-proxy:8080",
-  "default": "direct",
-  "rules": [
-    {
-      "comment": "Use upstream on office or corporate SSIDs",
-      "ssids": ["OfficeWifi", "CorpVPN"],
-      "action": "upstream"
-    },
-    {
-      "comment": "Internal domains always go via upstream regardless of network",
-      "domains": ["internal.corp.com", "jira.corp.com", "confluence.corp.com"],
-      "action": "upstream"
-    },
-    {
-      "comment": "Local traffic always direct",
-      "domains": ["localhost"],
-      "ips": ["127.0.0.1", "::1"],
-      "action": "direct"
+  "proxies": {
+    "corp": "http://username:password@corp-proxy:8080"
+  },
+  "defaults": {
+    "proxy": "direct",
+    "no_proxy": []
+  },
+  "locations": {
+    "work": {
+      "proxy": "corp",
+      "domain": "CORP",
+      "ssids": ["OfficeWifi", "OfficeWifi-5G"],
+      "ips": ["10.0.0.0/8"],
+      "dns": ["10.0.0.1", "10.0.0.2"],
+      "no_proxy": [".internal.corp.com"]
     }
-  ]
+  }
 }
