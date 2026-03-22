@@ -111,6 +111,19 @@ var plistTemplate = template.Must(template.New("plist").Parse(`<?xml version="1.
 
 // ─── install ──────────────────────────────────────────────────────────────────
 
+func cmdMigrate() {
+	p := detectPaths()
+	data, err := os.ReadFile(p.cfgFile)
+	if err != nil {
+		log.Fatalf("migrate: reading config: %v", err)
+	}
+	_, err = config.MigrateIfLegacy(p.cfgFile, data)
+	if err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
+	fmt.Printf("✓ config migrated → %s\n", p.cfgFile)
+}
+
 func cmdInstall() {
 	p := detectPaths()
 
@@ -543,6 +556,9 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "migrate":
+		cmdMigrate()
+
 	case "install":
 		cmdInstall()
 	case "uninstall":
