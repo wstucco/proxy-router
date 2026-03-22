@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.3.0 (2026-03-22)
+
+### Enhancements
+
+- [Config] New configuration schema — `locations` replace `rules`, `proxies` map for named upstream definitions, `defaults` for fallback behavior
+- [Config] Named proxy definitions — define a proxy once, reference it by name from multiple locations
+- [Config] Per-location `no_proxy` list — bypass proxy for specific destinations within a location; supports exact IP, CIDR, exact domain, `.domain` suffix match, and `*` wildcard
+- [Config] `defaults.no_proxy` — additional always-direct destinations on top of the hardcoded `localhost`, `127.0.0.1`, `::1`
+- [Config] Location matchers — OR logic within each array (`ssids`, `ips`, `domains`), AND logic across arrays
+- [Config] Validation on startup — unknown proxy names, locations without matchers, invalid URLs all abort with a clear error
+- [Config] Legacy format detection — clear error message with link to documentation when old `upstream`/`rules` format is detected
+- [Router] `Decide()` now returns a `Decision` with resolved proxy URL, domain, DNS servers, and effective no_proxy list
+- [Router] Always-no-proxy enforcement — `localhost`, `127.0.0.1`, `::1` are hardcoded and cannot be proxied regardless of config
+
+### Bug fixes
+
+- [Router] Fix CIDR matching for IP-based no_proxy entries
+
+---
+
 ## v0.2.0 (2026-03-19)
 
 ### Enhancements
@@ -9,7 +29,6 @@
 - [Proxy] Add automatic auth scheme negotiation via `proxyplease` — transparently handles Basic, NTLM, and Negotiate per-connection by inspecting `Proxy-Authenticate` on 407 responses
 - [Config] Add `upstream_domain` field for Active Directory NTLM auth — keeps the upstream URL clean and parseable
 - [Router] Log collapsed to single line per request — host shown only on rule match
-
 
 ### Bug fixes
 
