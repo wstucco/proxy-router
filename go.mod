@@ -2,7 +2,10 @@ module github.com/wstucco/proxy-router
 
 go 1.23.1
 
-require github.com/aus/proxyplease v0.1.0
+require (
+	github.com/BurntSushi/toml v1.6.0
+	github.com/aus/proxyplease v0.1.0
+)
 
 require (
 	github.com/alexbrainman/sspi v0.0.0-20180613141037-e580b900e9f5 // indirect
