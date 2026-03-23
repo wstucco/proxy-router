@@ -72,7 +72,7 @@ func detectPaths() paths {
 		p.plist = filepath.Join("/Library", "LaunchAgents", plistFile)
 	}
 
-	p.cfgFile = filepath.Join(p.cfgDir, "config.json")
+	p.cfgFile = filepath.Join(p.cfgDir, "config.toml")
 	return p
 }
 
@@ -113,11 +113,12 @@ var plistTemplate = template.Must(template.New("plist").Parse(`<?xml version="1.
 
 func cmdMigrate() {
 	p := detectPaths()
-	data, err := os.ReadFile(p.cfgFile)
+	jsonPath := strings.TrimSuffix(p.cfgFile, ".toml") + ".json"
+	data, err := os.ReadFile(jsonPath)
 	if err != nil {
-		log.Fatalf("migrate: reading config: %v", err)
+		log.Fatalf("migrate: reading legacy config: %v", err)
 	}
-	_, err = config.MigrateIfLegacy(p.cfgFile, data)
+	_, err = config.MigrateIfLegacy(jsonPath, p.cfgFile, data)
 	if err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
@@ -319,7 +320,7 @@ func cmdRun(args []string) {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	cfgFile := fs.String("config", p.cfgFile, "path to config file")
 	listen := fs.String("listen", "", "override listen address (e.g. localhost:33000)")
-	genCfg := fs.Bool("gen-config", false, "print example config.json and exit")
+	genCfg := fs.Bool("gen-config", false, "print example config.toml and exit")
 	fs.Parse(args)
 
 	if *genCfg {
@@ -416,7 +417,7 @@ RUN FLAGS:
                     default (brew):   /opt/homebrew/etc/proxy-router/config.json
                     default (manual): /usr/local/etc/proxy-router/config.json
   -listen <addr>    Override listen address (e.g. localhost:33000)
-  -gen-config       Print an example config.json and exit
+  -gen-config       Print an example config.toml and exit
 
 UNINSTALL FLAGS:
   --prune           Also delete the config directory
@@ -482,7 +483,7 @@ _proxy_router() {
   run_flags=(
     '-config[Path to config file]:file:_files'
     '-listen[Override listen address (e.g. localhost:33000)]:address'
-    '-gen-config[Print example config.json and exit]'
+    '-gen-config[Print example config.toml and exit]'
   )
 
   local -a uninstall_flags
@@ -540,7 +541,7 @@ complete -c proxy-router -n "__fish_use_subcommand" -a help       -d "Show help"
 
 complete -c proxy-router -n "__fish_seen_subcommand_from run" -l config     -d "Path to config file" -r -F
 complete -c proxy-router -n "__fish_seen_subcommand_from run" -l listen     -d "Override listen address" -r
-complete -c proxy-router -n "__fish_seen_subcommand_from run" -l gen-config -d "Print example config.json and exit"
+complete -c proxy-router -n "__fish_seen_subcommand_from run" -l gen-config -d "Print example config.toml and exit"
 
 complete -c proxy-router -n "__fish_seen_subcommand_from uninstall" -l prune -d "Also delete the config directory"
 
