@@ -26,8 +26,9 @@ type legacyRule struct {
 }
 
 // MigrateIfLegacy detects legacy format, migrates automatically, writes
-// a backup and the new config, logs a warning, and returns the migrated config.
-func MigrateIfLegacy(path string, data []byte) (*Config, error) {
+// a backup of jsonPath and a new TOML config to tomlPath, logs a warning,
+// and returns the migrated config.
+func MigrateIfLegacy(jsonPath, tomlPath string, data []byte) (*Config, error) {
 	var legacy legacyConfig
 	if err := json.Unmarshal(data, &legacy); err != nil {
 		return nil, fmt.Errorf("parsing legacy config: %w", err)
@@ -88,24 +89,20 @@ func MigrateIfLegacy(path string, data []byte) (*Config, error) {
 		cfg.Locations[name] = loc
 	}
 
-	// Write backup
-	backupPath := path + ".bak"
+	// Write backup of the original JSON
+	backupPath := jsonPath + ".bak"
 	if err := os.WriteFile(backupPath, data, 0644); err != nil {
 		log.Printf("[migrate] warning: could not write backup to %s: %v", backupPath, err)
 	} else {
 		log.Printf("[migrate] backup saved → %s", backupPath)
 	}
 
-	// Write migrated config
-	out, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("serializing migrated config: %w", err)
-	}
-	if err := os.WriteFile(path, out, 0644); err != nil {
+	// Write migrated config as TOML
+	if err := writeTOML(tomlPath, cfg); err != nil {
 		return nil, fmt.Errorf("writing migrated config: %w", err)
 	}
 
-	log.Printf("[migrate] config automatically migrated to new format")
+	log.Printf("[migrate] config automatically migrated to TOML → %s", tomlPath)
 	log.Printf("[migrate] see https://github.com/wstucco/proxy-router/wiki/configuration for details")
 
 	return cfg, nil
