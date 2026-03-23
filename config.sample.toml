@@ -1,0 +1,25 @@
+listen = "localhost:1337"
+
+[proxies]
+corp = "http://username:password@corp-proxy:8080"
+
+[defaults]
+proxy = "direct"
+no_proxy = []
+
+[locations.office]
+proxy = "corp"
+domain = "CORP"
+ssids = ["OfficeWifi", "OfficeWifi-5G"]
+ips = ["10.0.0.0/8"]
+dns = ["10.0.0.1", "10.0.0.2"]
+no_proxy = [".internal.corp.com", "192.168.0.0/24"]
+
+[locations.home-office]
+proxy = "corp"
+ssids = ["home-office"]
+
+# Internal domains always go via upstream regardless of network
+[locations.internal]
+proxy = "corp"
+domains = ["internal.corp.com", "jira.corp.com", "confluence.corp.com"]
