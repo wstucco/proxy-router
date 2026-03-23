@@ -25,33 +25,25 @@ Locations match on the current Wi-Fi SSID, destination hostname, or destination 
 
 proxy-router automatically negotiates the correct authentication scheme (Basic, NTLM, Negotiate) by inspecting the upstream proxy's response — no manual configuration needed.
 
-Credentials are specified in the proxy URL inside the `proxies` map:
+Credentials are specified in the proxy URL inside the `proxies` table:
 
-```json
-{
-  "proxies": {
-    "corp": "http://username:password@proxy.corp.com:8080"
-  }
-}
+```toml
+[proxies]
+corp = "http://username:password@proxy.corp.com:8080"
 ```
 
 ### Active Directory / NTLM
 
 If the proxy requires NTLM authentication on an Active Directory network, set the domain on the location via `domain`:
 
-```json
-{
-  "proxies": {
-    "corp": "http://username:password@proxyu.corp.it:80"
-  },
-  "locations": {
-    "work": {
-      "proxy": "corp",
-      "domain": "CORP",
-      "ssids": ["OfficeWifi"]
-    }
-  }
-}
+```toml
+[proxies]
+corp = "http://username:password@proxyu.corp.it:80"
+
+[locations.work]
+proxy = "corp"
+domain = "CORP"
+ssids = ["OfficeWifi"]
 ```
 
 Do not encode the domain in the username in the URL — this causes URL parsing failures. Use the `domain` field on the location instead.
@@ -86,7 +78,7 @@ proxy-router install
 
 ```
 proxy-router run                         Start the proxy
-proxy-router run -listen localhost:1337 -config ~/myconf.json
+proxy-router run -listen localhost:1337 -config ~/myconf.toml
 proxy-router migrate                     Migrate config from legacy format
 proxy-router install                     Write config, install completions, register LaunchAgent
 proxy-router uninstall                   Deregister LaunchAgent, remove completions (keeps config)
@@ -167,7 +159,7 @@ Settings → Appearance & Behavior → System Settings → HTTP Proxy → Manual
 | Path | Purpose |
 |---|---|
 | `/opt/homebrew/bin/proxy-router` | Binary |
-| `/opt/homebrew/etc/proxy-router/config.json` | Config |
+| `/opt/homebrew/etc/proxy-router/config.toml` | Config |
 | `/opt/homebrew/var/log/proxy-router.log` | Log |
 | managed by `brew services` | LaunchAgent |
 
@@ -176,7 +168,7 @@ Settings → Appearance & Behavior → System Settings → HTTP Proxy → Manual
 | Path | Purpose |
 |---|---|
 | `/usr/local/bin/proxy-router` | Binary |
-| `/usr/local/etc/proxy-router/config.json` | Config |
+| `/usr/local/etc/proxy-router/config.toml` | Config |
 | `/usr/local/var/log/proxy-router/proxy-router.log` | Log |
 | `/Library/LaunchAgents/com.wstucco.proxy-router.plist` | LaunchAgent |
 
@@ -185,7 +177,7 @@ Settings → Appearance & Behavior → System Settings → HTTP Proxy → Manual
 Run with a custom config and port without installing anything:
 
 ```bash
-proxy-router run -config ~/myconf.json -listen localhost:1338
+proxy-router run -config ~/myconf.toml -listen localhost:1338
 ```
 
 ## Config
@@ -194,31 +186,27 @@ Locations are matched by SSID, IP, and/or domain (OR within each array, AND acro
 
 `localhost`, `127.0.0.1`, and `::1` are always direct — they cannot be proxied regardless of config.
 
-```json
-{
-  "listen": "localhost:1337",
-  "proxies": {
-    "corp": "http://username:password@corp-proxy:8080"
-  },
-  "defaults": {
-    "proxy": "direct",
-    "no_proxy": []
-  },
-  "locations": {
-    "work": {
-      "proxy": "corp",
-      "domain": "CORP",
-      "ssids": ["OfficeWifi", "OfficeWifi-5G"],
-      "ips": ["10.0.0.0/8"],
-      "dns": ["10.0.0.1", "10.0.0.2"],
-      "no_proxy": [".internal.corp.com", "192.168.0.0/24"]
-    },
-    "co-working": {
-      "proxy": "corp",
-      "ssids": ["Barista"]
-    }
-  }
-}
+```toml
+listen = "localhost:1337"
+
+[proxies]
+corp = "http://username:password@corp-proxy:8080"
+
+[defaults]
+proxy = "direct"
+no_proxy = []
+
+[locations.work]
+proxy = "corp"
+domain = "CORP"
+ssids = ["OfficeWifi", "OfficeWifi-5G"]
+ips = ["10.0.0.0/8"]
+dns = ["10.0.0.1", "10.0.0.2"]
+no_proxy = [".internal.corp.com", "192.168.0.0/24"]
+
+[locations.co-working]
+proxy = "corp"
+ssids = ["Barista"]
 ```
 
 ### Fields
