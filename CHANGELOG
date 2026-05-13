@@ -14,9 +14,9 @@
 - [Config] Legacy format detection — clear error message with link to documentation when old `upstream`/`rules` format is detected
 - [Config] Auto-migrate new JSON config format to TOML (in addition to legacy format); `Load()` converts any JSON config seamlessly
 - [Config] Stamped `version` during migration — migrated configs are version-tracked for future schema upgrades
-- [Config] Add `routes` to `Location` — path-based routing rules using glob patterns (Go `path.Match` syntax). Routes override the proxy decision per-URL path for both HTTP and HTTPS (via MITM).
-- [Config] Add `Routes` field to `Decision` — carries the matched location's routes for use by the MITM CONNECT handler
-- [Router] `Decide()` now accepts a `path` argument for route matching; routes are resolved inline for HTTP and carried in the Decision for CONNECT MITM
+- [Config] Add `routes` to `Location` — destination rewriting rules using URL prefix matching. Each route redirects matching `host+path` requests to a configurable base URL, like an API gateway.
+- [Config] Add `Routes` field to `Decision` — carries the matched location's route map for per-request destination rewriting in the proxy handler
+- [Router] `Decide()` no longer takes a `path` parameter — route resolution moved to the proxy handler
 
 ### Bug fixes
 
@@ -33,8 +33,9 @@
 - [MITM] Add TLS interception (MITM) for HTTPS CONNECT tunnels when a location has routes defined — enables path-based routing on HTTPS connections
 - [MITM] Add `mitmProxy` method — forwards decrypted HTTP requests between client-side and target-side TLS connections within the MITM tunnel
 - [MITM] Automatic CA certificate generation on first run; per-host certificates generated on-demand and cached in memory
-- [Routes] `handleHTTP` passes request path to `Decide()` for inline route resolution; route targets override the proxy URL per-request
-- [Routes] `handleCONNECT` triggers MITM mode when the matched location has routes; routes are matched after TLS termination
+- [Routes] `handleHTTP` applies route rewriting before forwarding — matched routes redirect the request to the route's target URL directly, bypassing the location proxy
+- [Routes] `handleCONNECT` triggers MITM mode when the matched location has routes; each decrypted HTTP request is routed individually — unmatched requests go to the original host, matched requests are redirected to the route target
+- [MITM] `mitmProxy` establishes a fresh TLS connection per request to the target determined by route matching, then forwards the decrypted request and returns the response
 
 ### Formula
 
