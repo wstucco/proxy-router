@@ -33,7 +33,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
-	decision := router.Decide(s.cfg, r.Host)
+	decision := router.Decide(s.cfg, r.Host, "")
 	dialer := makeDialer(decision.DNS)
 
 	var targetConn net.Conn
@@ -79,7 +79,7 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
-	decision := router.Decide(s.cfg, r.Host)
+	decision := router.Decide(s.cfg, r.Host, r.URL.Path)
 	dialer := makeDialer(decision.DNS)
 
 	var transport http.RoundTripper

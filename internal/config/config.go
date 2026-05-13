@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -46,8 +47,20 @@ type Location struct {
 	Domains []string `toml:"domains,omitempty" json:"domains,omitempty"`
 
 	// Options
-	DNS     []string `toml:"dns,omitempty"      json:"dns,omitempty"`
-	NoProxy []string `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
+	DNS     []string          `toml:"dns,omitempty"      json:"dns,omitempty"`
+	NoProxy []string          `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
+	Routes  map[string]string `toml:"routes,omitempty"   json:"routes,omitempty"`
+}
+
+// RouteMatch checks if path matches any route pattern.
+// Returns the target proxy key ("direct" or a named proxy) and true if matched.
+func (l *Location) RouteMatch(requestPath string) (string, bool) {
+	for pattern, target := range l.Routes {
+		if matched, _ := path.Match(pattern, requestPath); matched {
+			return target, true
+		}
+	}
+	return "", false
 }
 
 // Decision is the result of location matching.
@@ -56,6 +69,7 @@ type Decision struct {
 	Domain   string   // AD domain for NTLM
 	DNS      []string // custom DNS servers, nil means system default
 	NoProxy  []string // combined no_proxy list for this decision
+	Routes   map[string]string // routes from matched location, nil if none
 }
 
 // Load reads and validates the config file.
