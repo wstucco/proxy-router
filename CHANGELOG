@@ -1,10 +1,53 @@
 # Changelog
 
-## v0.2.1 (2026-04-14)
+## v0.3.0 (2026-05-13)
+
+### Enhancements
+
+- [Config] New configuration schema — `locations` replace `rules`, `proxies` map for named upstream definitions, `defaults` for fallback behavior
+- [Config] Add `version` field to config for future schema migration support
+- [Config] Named proxy definitions — define a proxy once, reference it by name from multiple locations
+- [Config] Per-location `no_proxy` list — bypass proxy for specific destinations within a location; supports exact IP, CIDR, exact domain, `.domain` suffix match, and `*` wildcard
+- [Config] `defaults.no_proxy` — additional always-direct destinations on top of the hardcoded `localhost`, `127.0.0.1`, `::1`
+- [Config] Location matchers — OR logic within each array (`ssids`, `ips`, `domains`), AND logic across arrays
+- [Config] Validation on startup — unknown proxy names, locations without matchers, invalid URLs all abort with a clear error
+- [Config] Legacy format detection — clear error message with link to documentation when old `upstream`/`rules` format is detected
+- [Config] Auto-migrate new JSON config format to TOML (in addition to legacy format); `Load()` converts any JSON config seamlessly
+- [Config] Stamped `version` during migration — migrated configs are version-tracked for future schema upgrades
+- [Config] Add `routes` to `Location` — destination rewriting rules using URL prefix matching. Each route redirects matching `host+path` requests to a configurable base URL, like an API gateway.
+- [Config] Add `Routes` field to `Decision` — carries the matched location's route map for per-request destination rewriting in the proxy handler
+- [Router] `Decide()` no longer takes a `path` parameter — route resolution moved to the proxy handler
 
 ### Bug fixes
 
 - [CI] Fix build on non-Darwin platforms by adding build tags to cgo files and no-op stubs for Linux and other platforms
+
+### CLI
+
+- [Migrate] Make `migrate` command idempotent for Homebrew `post_install` — exits cleanly when no legacy `config.json` exists or the JSON is not in legacy format, instead of fatally aborting
+- [Certs] Add `install-certs` command — generates a local CA certificate for TLS MITM and prints platform-specific trust installation instructions
+- [Help] Update help text to document TLS MITM, `install-certs`, and updated paths
+
+### Proxy
+
+- [MITM] Add TLS interception (MITM) for HTTPS CONNECT tunnels when a location has routes defined — enables path-based routing on HTTPS connections
+- [MITM] Add `mitmProxy` method — forwards decrypted HTTP requests between client-side and target-side TLS connections within the MITM tunnel
+- [MITM] Automatic CA certificate generation on first run; per-host certificates generated on-demand and cached in memory
+- [Routes] `handleHTTP` applies route rewriting before forwarding — matched routes redirect the request to the route's target URL directly, bypassing the location proxy
+- [Routes] `handleCONNECT` triggers MITM mode when the matched location has routes; each decrypted HTTP request is routed individually — unmatched requests go to the original host, matched requests are redirected to the route target
+- [MITM] `mitmProxy` establishes a fresh TLS connection per request to the target determined by route matching; non-routed requests respect the location's upstream proxy, routed requests go direct
+
+### Formula
+
+- [Brew] Update service definition and `post_install` to use `config.toml`; run `migrate` and `install-certs` during install to auto-convert legacy configs and generate the CA
+
+---
+
+## v0.2.1 (2026-04-14)
+
+### Bug fixes
+
+- [Proxy] Fix add darwin build tags to cgo files, add stubs for other platforms
 
 ---
 

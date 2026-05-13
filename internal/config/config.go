@@ -1,45 +1,70 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 // alwaysNoProxy are destinations that are never proxied, regardless of config.
 var alwaysNoProxy = []string{"localhost", "127.0.0.1", "::1"}
 
+const CurrentVersion = "1"
+
 // Config is the top-level configuration for proxy-router.
 type Config struct {
-	Listen    string               `json:"listen"`              // e.g. "localhost:1337"
-	Proxies   map[string]string    `json:"proxies,omitempty"`   // named proxy URLs
-	Defaults  Defaults             `json:"defaults"`            // default behavior
-	Locations map[string]*Location `json:"locations,omitempty"` // named locations
+	Version   string               `toml:"version,omitempty"   json:"version,omitempty"`
+	Listen    string               `toml:"listen"              json:"listen"`
+	Proxies   map[string]string    `toml:"proxies,omitempty"   json:"proxies,omitempty"`
+	Defaults  Defaults             `toml:"defaults"            json:"defaults"`
+	Locations map[string]*Location `toml:"locations,omitempty" json:"locations,omitempty"`
 }
 
 // Defaults defines the fallback behavior when no location matches.
 type Defaults struct {
-	Proxy   string   `json:"proxy,omitempty"`    // "direct" or a key in Proxies
-	NoProxy []string `json:"no_proxy,omitempty"` // additional always-direct destinations
+	Proxy   string   `toml:"proxy,omitempty"    json:"proxy,omitempty"`
+	NoProxy []string `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
 }
 
 // Location defines a named network context with matchers and proxy settings.
 type Location struct {
 	// Proxy config
-	Proxy  string `json:"proxy"`            // key in Proxies map or a raw URL
-	Domain string `json:"domain,omitempty"` // AD domain for NTLM auth
+	Proxy  string `toml:"proxy"            json:"proxy"`
+	Domain string `toml:"domain,omitempty" json:"domain,omitempty"`
 
 	// Matchers — OR within each array, AND across arrays
-	SSIDs   []string `json:"ssids,omitempty"`   // Wi-Fi SSID (case-insensitive)
-	IPs     []string `json:"ips,omitempty"`     // exact IP or CIDR
-	Domains []string `json:"domains,omitempty"` // hostname suffix match
+	SSIDs   []string `toml:"ssids,omitempty"   json:"ssids,omitempty"`
+	IPs     []string `toml:"ips,omitempty"     json:"ips,omitempty"`
+	Domains []string `toml:"domains,omitempty" json:"domains,omitempty"`
 
 	// Options
-	DNS     []string `json:"dns,omitempty"`      // custom DNS servers for this location
-	NoProxy []string `json:"no_proxy,omitempty"` // destinations to bypass proxy for
+	DNS     []string          `toml:"dns,omitempty"      json:"dns,omitempty"`
+	NoProxy []string          `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
+	Routes  map[string]string `toml:"routes,omitempty"   json:"routes,omitempty"`
+}
+
+// MatchRoute checks if host+path matches any route prefix.
+// Routes are destination rewrites: the key is a URL prefix (host or host/path),
+// the value is the base URL to rewrite matching requests to.
+// Returns the full rewritten URL (base + unmatched suffix).
+func (l *Location) MatchRoute(host, reqPath string) (string, bool) {
+	matchKey := strings.TrimRight(host+reqPath, "/")
+	for prefix, target := range l.Routes {
+		prefix = strings.TrimRight(prefix, "/")
+		if strings.HasPrefix(matchKey, prefix) {
+			suffix := strings.TrimPrefix(matchKey, prefix)
+			return strings.TrimRight(target, "/") + suffix, true
+		}
+	}
+	return "", false
 }
 
 // Decision is the result of location matching.
@@ -48,16 +73,53 @@ type Decision struct {
 	Domain   string   // AD domain for NTLM
 	DNS      []string // custom DNS servers, nil means system default
 	NoProxy  []string // combined no_proxy list for this decision
+	Routes   map[string]string // routes from matched location, nil if none
 }
 
-// Load reads and validates the config file, detecting legacy format automatically.
+// Load reads and validates the config file.
+//
+// Detection order:
+//  1. Path ends in .toml and file exists → parse as TOML
+//  2. Path ends in .toml but file missing → look for <same-base>.json, auto-migrate it to .toml
+//  3. Path ends in .json → auto-migrate to .toml (supports both legacy and new JSON formats)
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
+
+	if os.IsNotExist(err) && strings.HasSuffix(path, ".toml") {
+		// config.toml missing: try config.json in same directory
+		jsonPath := strings.TrimSuffix(path, ".toml") + ".json"
+		return migrateFromJSONFile(jsonPath, path)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
 
-	// Detect and automatically migrate legacy format
+	if strings.HasSuffix(path, ".toml") {
+		return parseTOML(data)
+	}
+
+	// JSON file passed explicitly
+	tomlPath := strings.TrimSuffix(path, filepath.Ext(path)) + ".toml"
+	return migrateFromJSONData(path, tomlPath, data)
+}
+
+func parseTOML(data []byte) (*Config, error) {
+	var cfg Config
+	if _, err := toml.Decode(string(data), &cfg); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	return finalize(&cfg)
+}
+
+func migrateFromJSONFile(jsonPath, tomlPath string) (*Config, error) {
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading config: %w", err)
+	}
+	return migrateFromJSONData(jsonPath, tomlPath, data)
+}
+
+func migrateFromJSONData(jsonPath, tomlPath string, data []byte) (*Config, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
@@ -65,14 +127,35 @@ func Load(path string) (*Config, error) {
 	_, hasUpstream := raw["upstream"]
 	_, hasRules := raw["rules"]
 	if hasUpstream || hasRules {
-		return MigrateIfLegacy(path, data)
+		return MigrateIfLegacy(jsonPath, tomlPath, data)
 	}
 
+	// New JSON format — unmarshal directly
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
+	if _, err := finalize(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
 
+	backupPath := jsonPath + ".bak"
+	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+		log.Printf("[migrate] warning: could not write backup to %s: %v", backupPath, err)
+	} else {
+		log.Printf("[migrate] backup saved → %s", backupPath)
+	}
+	if err := writeTOML(tomlPath, &cfg); err != nil {
+		return nil, fmt.Errorf("writing migrated config: %w", err)
+	}
+	log.Printf("[migrate] config migrated from JSON to TOML → %s", tomlPath)
+	return &cfg, nil
+}
+
+func finalize(cfg *Config) (*Config, error) {
+	if cfg.Version == "" {
+		cfg.Version = CurrentVersion
+	}
 	if cfg.Listen == "" {
 		cfg.Listen = "localhost:1337"
 	}
@@ -82,12 +165,19 @@ func Load(path string) (*Config, error) {
 	if cfg.Locations == nil {
 		cfg.Locations = map[string]*Location{}
 	}
-
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
+	return cfg, nil
+}
 
-	return &cfg, nil
+// writeTOML encodes cfg as TOML and writes it to path.
+func writeTOML(path string, cfg *Config) error {
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
+		return err
+	}
+	return os.WriteFile(path, buf.Bytes(), 0644)
 }
 
 // validate checks the config for errors.
@@ -116,9 +206,11 @@ func (c *Config) validate() error {
 		if loc.Proxy == "" {
 			return fmt.Errorf("location %q is missing proxy field", name)
 		}
-		if _, ok := c.Proxies[loc.Proxy]; !ok {
-			if _, err := url.Parse(loc.Proxy); err != nil {
-				return fmt.Errorf("location %q proxy %q is not a known proxy name or valid URL", name, loc.Proxy)
+		if loc.Proxy != "direct" {
+			if _, ok := c.Proxies[loc.Proxy]; !ok {
+				if _, err := url.Parse(loc.Proxy); err != nil {
+					return fmt.Errorf("location %q proxy %q is not a known proxy name or valid URL", name, loc.Proxy)
+				}
 			}
 		}
 	}
@@ -219,28 +311,27 @@ func MatchDomain(host string, domains []string) bool {
 	return false
 }
 
-// DefaultConfig returns an example config as JSON string.
+// DefaultConfig returns an example config as a TOML string.
 func DefaultConfig() string {
-	cfg := Config{
-		Listen: "localhost:1337",
-		Proxies: map[string]string{
-			"corp": "http://username:password@corp-proxy:8080",
-		},
-		Defaults: Defaults{
-			Proxy:   "direct",
-			NoProxy: []string{},
-		},
-		Locations: map[string]*Location{
-			"work": {
-				Proxy:   "corp",
-				Domain:  "CORP",
-				SSIDs:   []string{"OfficeWifi", "OfficeWifi-5G"},
-				IPs:     []string{"10.0.0.0/8"},
-				DNS:     []string{"10.0.0.1", "10.0.0.2"},
-				NoProxy: []string{".internal.corp.com"},
-			},
-		},
-	}
-	b, _ := json.MarshalIndent(cfg, "", "  ")
-	return string(b)
+	return `version = "1"
+listen = "localhost:1337"
+
+# Named upstream proxies
+[proxies]
+corp = "http://username:password@corp-proxy:8080"
+
+# Default behavior when no location matches
+[defaults]
+proxy = "direct"
+no_proxy = []
+
+# Locations — first match wins
+[locations.work]
+proxy = "corp"
+domain = "CORP"
+ssids = ["OfficeWifi", "OfficeWifi-5G"]
+ips = ["10.0.0.0/8"]
+dns = ["10.0.0.1", "10.0.0.2"]
+no_proxy = [".internal.corp.com"]
+`
 }

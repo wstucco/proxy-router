@@ -9,7 +9,8 @@ import (
 )
 
 // Decide evaluates locations top-to-bottom and returns a Decision for the given host.
-// Defaults are applied first, then location matching.
+// Routes from the matched location are carried in the Decision for per-request
+// destination rewriting in the proxy handler.
 func Decide(cfg *config.Config, host string) config.Decision {
 	ssid := CurrentSSID()
 
@@ -62,12 +63,14 @@ func Decide(cfg *config.Config, host string) config.Decision {
 	}
 
 	proxyURL := cfg.ResolveProxyURL(matched.Proxy)
+
 	logEntry(host, ssid, fmt.Sprintf("location %q matched → %s", matchedName, matched.Proxy), true)
 	return config.Decision{
 		ProxyURL: proxyURL,
 		Domain:   matched.Domain,
 		DNS:      matched.DNS,
 		NoProxy:  noProxy,
+		Routes:   matched.Routes,
 	}
 }
 

@@ -18,7 +18,7 @@ class ProxyRouter < Formula
   end
 
   service do
-    run [opt_bin/"proxy-router", "run", "-config", etc/"proxy-router/config.json"]
+    run [opt_bin/"proxy-router", "run", "-config", etc/"proxy-router/config.toml"]
     keep_alive true
     log_path var/"log/proxy-router.log"
     error_log_path var/"log/proxy-router.err"
@@ -26,9 +26,17 @@ class ProxyRouter < Formula
 
   def post_install
     (etc/"proxy-router").mkpath
-    unless (etc/"proxy-router/config.json").exist?
-      (etc/"proxy-router/config.json").write Utils.safe_popen_read(bin/"proxy-router", "run", "-gen-config")
+
+    # Migrate from legacy config.json if present
+    system bin/"proxy-router", "migrate"
+
+    # Generate default config.toml if neither .toml nor legacy .json exist
+    unless (etc/"proxy-router/config.toml").exist?
+      (etc/"proxy-router/config.toml").write Utils.safe_popen_read(bin/"proxy-router", "run", "-gen-config")
     end
+
+    # Generate CA certificate for TLS MITM (idempotent)
+    system bin/"proxy-router", "install-certs"
   end
 
   def caveats
@@ -36,7 +44,7 @@ class ProxyRouter < Formula
       To start proxy-router as a service:
         brew services start proxy-router
 
-      Config file: #{etc}/proxy-router/config.json
+      Config file: #{etc}/proxy-router/config.toml
       Logs:        #{var}/log/proxy-router.{log,err}
     EOS
   end

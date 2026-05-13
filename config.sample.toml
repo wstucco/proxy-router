@@ -1,0 +1,92 @@
+# ── Global ─────────────────────────────────────────────────────────────────────
+# Schema version (used for future migration support). Do not change.
+version = "1"
+
+# Address the proxy listens on. Configure your browser/OS/app to use this.
+listen = "localhost:1337"
+
+# ── Upstream proxies ───────────────────────────────────────────────────────────
+# Named proxy definitions. Reference them by name from locations.
+# Format: http://username:password@host:port
+[proxies]
+corp = "http://username:password@corp-proxy:8080"
+
+# ── Default behavior ───────────────────────────────────────────────────────────
+# Used when no location matches the current connection.
+[defaults]
+# "direct" to connect directly, or a proxy name from [proxies].
+proxy = "direct"
+# Destinations that always bypass the proxy (merged with per-location no_proxy).
+# Supports: wildcard "*", CIDR "10.0.0.0/8", domain ".internal", exact match.
+no_proxy = []
+
+# ── Office location ────────────────────────────────────────────────────────────
+# Matches when the current Wi-Fi SSID OR destination IP falls in one of the
+# defined ranges OR the destination hostname matches one of the domain suffixes.
+# Matchers within a location are OR'd inside each array, AND'd across arrays.
+#
+# All traffic goes through the corp proxy, except internal domains which bypass it.
+[locations.office]
+proxy = "corp"
+# NTLM authentication domain (omit if not using NTLM).
+domain = "CORP"
+# Match by Wi-Fi SSID (case-insensitive, supports "*" wildcard).
+ssids = ["OfficeWifi", "OfficeWifi-5G"]
+# Match by destination IP or CIDR range.
+ips = ["10.0.0.0/8"]
+# Match by hostname suffix (leading dot = subdomain).
+domains = [".corp.internal"]
+# Custom DNS servers used only for connections matching this location.
+dns = ["10.0.0.1", "10.0.0.2"]
+# Destinations to bypass the proxy for (merged with defaults.no_proxy).
+no_proxy = [".internal.corp.com", "192.168.0.0/24"]
+
+# ── Routes (destination rewriting) ────────────────────────────────────────────
+# Routes rewrite requests matching host+path to a different URL, like a
+# reverse proxy / API gateway. Unmatched requests use the location's proxy.
+#
+#   "httpbin.org" = "https://localhost:4321"
+#     → httpbin.org/anything → localhost:4321/anything
+#
+#   "repo1.maven.org/maven2/com/company/" = "https://nexus.internal/repo/"
+#     → repo1.maven.org/maven2/com/company/foo/1.0/foo.pom
+#       → nexus.internal/repo/foo/1.0/foo.pom
+#
+# HTTP routes work directly. HTTPS routes require TLS interception (MITM),
+# enabled automatically when a location has routes defined. In MITM mode,
+# non-routed requests still respect the location's upstream proxy setting;
+# routed requests go directly to the route target. The CA cert must be trusted:
+#   proxy-router install-certs
+#   sudo security add-trusted-cert -d -r trustRoot \
+#     -k /Library/Keychains/System.keychain /opt/homebrew/etc/proxy-router/cacert.pem
+[locations.office.routes]
+# Route company Maven artifacts to the internal Nexus instead of Maven Central.
+"repo1.maven.org/maven2/com/companyname/" = "https://nexus.company.com/repository/private/"
+# Route httpbin to a local debug server.
+"httpbin.org" = "https://localhost:4321"
+
+# ── Home office location ──────────────────────────────────────────────────────
+# Matches only on SSID. No IP or domain matchers — any destination matches.
+# Uses the corp proxy when on this network.
+[locations.home-office]
+proxy = "corp"
+ssids = ["home-office"]
+
+# ── Internal domains (always via upstream) ─────────────────────────────────────
+# Matches regardless of network — only domain matching is used.
+# Without an SSID matcher, this location is always evaluated.
+[locations.internal]
+proxy = "corp"
+domains = ["internal.corp.com", "jira.corp.com", "confluence.corp.com"]
+
+# ── Home network example (add your own SSID) ──────────────────────────────────
+# Routes can rewrite to any URL. Here, corporate artifact requests go
+# directly to the company Nexus (bypassing any location proxy since routes
+# always go direct to their target):
+#
+# [locations.home]
+# proxy = "direct"
+# ssids = ["MyHomeWiFi"]
+#
+# [locations.home.routes]
+# "repo1.maven.org/maven2/com/companyname/" = "https://nexus.company.com/repository/private/"
