@@ -1,3 +1,4 @@
+version = "1"
 listen = "localhost:1337"
 
 [proxies]

@@ -5,6 +5,7 @@
 ### Enhancements
 
 - [Config] New configuration schema — `locations` replace `rules`, `proxies` map for named upstream definitions, `defaults` for fallback behavior
+- [Config] Add `version` field to config for future schema migration support
 - [Config] Named proxy definitions — define a proxy once, reference it by name from multiple locations
 - [Config] Per-location `no_proxy` list — bypass proxy for specific destinations within a location; supports exact IP, CIDR, exact domain, `.domain` suffix match, and `*` wildcard
 - [Config] `defaults.no_proxy` — additional always-direct destinations on top of the hardcoded `localhost`, `127.0.0.1`, `::1`

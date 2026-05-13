@@ -16,8 +16,11 @@ import (
 // alwaysNoProxy are destinations that are never proxied, regardless of config.
 var alwaysNoProxy = []string{"localhost", "127.0.0.1", "::1"}
 
+const CurrentVersion = "1"
+
 // Config is the top-level configuration for proxy-router.
 type Config struct {
+	Version   string               `toml:"version,omitempty"   json:"version,omitempty"`
 	Listen    string               `toml:"listen"              json:"listen"`
 	Proxies   map[string]string    `toml:"proxies,omitempty"   json:"proxies,omitempty"`
 	Defaults  Defaults             `toml:"defaults"            json:"defaults"`
@@ -113,6 +116,9 @@ func migrateFromJSONData(jsonPath, tomlPath string, data []byte) (*Config, error
 }
 
 func finalize(cfg *Config) (*Config, error) {
+	if cfg.Version == "" {
+		cfg.Version = CurrentVersion
+	}
 	if cfg.Listen == "" {
 		cfg.Listen = "localhost:1337"
 	}
@@ -270,7 +276,8 @@ func MatchDomain(host string, domains []string) bool {
 
 // DefaultConfig returns an example config as a TOML string.
 func DefaultConfig() string {
-	return `listen = "localhost:1337"
+	return `version = "1"
+listen = "localhost:1337"
 
 # Named upstream proxies
 [proxies]
