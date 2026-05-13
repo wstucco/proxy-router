@@ -1,13 +1,16 @@
 package proxy
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"time"
 
 	"github.com/aus/proxyplease"
@@ -17,11 +20,20 @@ import (
 )
 
 type Server struct {
-	cfg *config.Config
+	cfg     *config.Config
+	certMgr interface {
+		CertForHost(hostname string) (*tls.Certificate, error)
+	}
 }
 
 func New(cfg *config.Config) *Server {
 	return &Server{cfg: cfg}
+}
+
+func (s *Server) SetCertManager(mgr interface {
+	CertForHost(hostname string) (*tls.Certificate, error)
+}) {
+	s.certMgr = mgr
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +46,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 	decision := router.Decide(s.cfg, r.Host, "")
+
+	// MITM mode for locations with routes (enables path-based HTTPS routing)
+	if len(decision.Routes) > 0 && s.certMgr != nil {
+		s.handleMITM(w, r, &decision)
+		return
+	}
+
 	dialer := makeDialer(decision.DNS)
 
 	var targetConn net.Conn
@@ -125,6 +144,121 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
+}
+
+func (s *Server) handleMITM(w http.ResponseWriter, r *http.Request, decision *config.Decision) {
+	dialer := makeDialer(decision.DNS)
+	hostname := stripPort(r.Host)
+
+	targetRaw, err := dialer.DialContext(context.Background(), "tcp", r.Host)
+	if err != nil {
+		log.Printf("[proxy] MITM %s: dial failed: %v", r.Host, err)
+		http.Error(w, fmt.Sprintf("failed to connect: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer targetRaw.Close()
+
+	targetTLS := tls.Client(targetRaw, &tls.Config{ServerName: hostname})
+	if err := targetTLS.Handshake(); err != nil {
+		log.Printf("[proxy] MITM %s: target TLS handshake failed: %v", r.Host, err)
+		http.Error(w, fmt.Sprintf("TLS handshake failed: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer targetTLS.Close()
+
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijacking not supported", http.StatusInternalServerError)
+		return
+	}
+	clientRaw, _, err := hijacker.Hijack()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer clientRaw.Close()
+
+	_, _ = clientRaw.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+
+	cert, err := s.certMgr.CertForHost(hostname)
+	if err != nil {
+		log.Printf("[proxy] MITM %s: cert generation failed: %v", r.Host, err)
+		return
+	}
+
+	clientTLS := tls.Server(clientRaw, &tls.Config{Certificates: []tls.Certificate{*cert}})
+	if err := clientTLS.Handshake(); err != nil {
+		log.Printf("[proxy] MITM %s: client TLS handshake failed: %v", r.Host, err)
+		return
+	}
+	defer clientTLS.Close()
+
+	log.Printf("[proxy] MITM %s tunnel open (routes: %d)", r.Host, len(decision.Routes))
+	s.mitmProxy(clientTLS, targetTLS, decision)
+}
+
+func (s *Server) mitmProxy(clientTLS, targetTLS *tls.Conn, decision *config.Decision) {
+	for {
+		req, err := http.ReadRequest(bufio.NewReader(clientTLS))
+		if err != nil {
+			break
+		}
+
+		if len(decision.Routes) > 0 {
+			if target, ok := matchRoute(decision.Routes, req.URL.Path); ok {
+				log.Printf("[proxy] MITM route %q matched → %s", req.URL.Path, target)
+				if target != "" && target != "direct" {
+					// Route to a specific upstream — for now fall through to
+					// the existing direct connection. Full upstream-per-route
+					// support requires establishing a new upstream CONNECT.
+				}
+			}
+		}
+
+		req.RequestURI = ""
+		req.Header.Del("Proxy-Connection")
+		req.Header.Del("Proxy-Authenticate")
+		req.Header.Del("Proxy-Authorization")
+
+		if err := req.Write(targetTLS); err != nil {
+			log.Printf("[proxy] MITM: write request failed: %v", err)
+			break
+		}
+
+		resp, err := http.ReadResponse(bufio.NewReader(targetTLS), req)
+		if err != nil {
+			log.Printf("[proxy] MITM: read response failed: %v", err)
+			break
+		}
+
+		if err := resp.Write(clientTLS); err != nil {
+			resp.Body.Close()
+			log.Printf("[proxy] MITM: write response failed: %v", err)
+			break
+		}
+		resp.Body.Close()
+
+		// HTTP/1.1 without Connection: keep-alive → done
+		if req.Close {
+			break
+		}
+	}
+}
+
+func stripPort(host string) string {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		return h
+	}
+	return host
+}
+
+func matchRoute(routes map[string]string, requestPath string) (string, bool) {
+	for pattern, target := range routes {
+		if matched, _ := path.Match(pattern, requestPath); matched {
+			return target, true
+		}
+	}
+	return "", false
 }
 
 func dialViaUpstream(proxyURL, domain, target string, dialer *net.Dialer) (net.Conn, error) {
