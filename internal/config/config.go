@@ -46,9 +46,8 @@ type Location struct {
 	Domains []string `toml:"domains,omitempty" json:"domains,omitempty"`
 
 	// Options
-	DNS     []string          `toml:"dns,omitempty"      json:"dns,omitempty"`
-	NoProxy []string          `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
-	Routes  map[string]string `toml:"routes,omitempty"   json:"routes,omitempty"`
+	DNS     []string `toml:"dns,omitempty"      json:"dns,omitempty"`
+	NoProxy []string `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
 }
 
 // Decision is the result of location matching.

@@ -13,8 +13,7 @@
 - [Config] Validation on startup — unknown proxy names, locations without matchers, invalid URLs all abort with a clear error
 - [Config] Legacy format detection — clear error message with link to documentation when old `upstream`/`rules` format is detected
 - [Config] Auto-migrate new JSON config format to TOML (in addition to legacy format); `Load()` converts any JSON config seamlessly
-- [Router] `Decide()` now returns a `Decision` with resolved proxy URL, domain, DNS servers, and effective no_proxy list
-- [Router] Always-no-proxy enforcement — `localhost`, `127.0.0.1`, `::1` are hardcoded and cannot be proxied regardless of config
+- [Config] Remove unused `routes` field from `Location` struct
 
 ### Bug fixes
 
