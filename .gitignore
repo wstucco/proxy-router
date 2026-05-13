@@ -11,3 +11,6 @@ vendor/
 
 # macOS
 .DS_Store
+
+# Local development notes (not for distribution)
+NOTES.md
