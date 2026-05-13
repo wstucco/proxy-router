@@ -13,8 +13,10 @@
 - [Config] Validation on startup — unknown proxy names, locations without matchers, invalid URLs all abort with a clear error
 - [Config] Legacy format detection — clear error message with link to documentation when old `upstream`/`rules` format is detected
 - [Config] Auto-migrate new JSON config format to TOML (in addition to legacy format); `Load()` converts any JSON config seamlessly
-- [Config] Remove unused `routes` field from `Location` struct
 - [Config] Stamped `version` during migration — migrated configs are version-tracked for future schema upgrades
+- [Config] Add `routes` to `Location` — path-based routing rules using glob patterns (Go `path.Match` syntax). Routes override the proxy decision per-URL path for both HTTP and HTTPS (via MITM).
+- [Config] Add `Routes` field to `Decision` — carries the matched location's routes for use by the MITM CONNECT handler
+- [Router] `Decide()` now accepts a `path` argument for route matching; routes are resolved inline for HTTP and carried in the Decision for CONNECT MITM
 
 ### Bug fixes
 
@@ -23,10 +25,20 @@
 ### CLI
 
 - [Migrate] Make `migrate` command idempotent for Homebrew `post_install` — exits cleanly when no legacy `config.json` exists or the JSON is not in legacy format, instead of fatally aborting
+- [Certs] Add `install-certs` command — generates a local CA certificate for TLS MITM and prints platform-specific trust installation instructions
+- [Help] Update help text to document TLS MITM, `install-certs`, and updated paths
+
+### Proxy
+
+- [MITM] Add TLS interception (MITM) for HTTPS CONNECT tunnels when a location has routes defined — enables path-based routing on HTTPS connections
+- [MITM] Add `mitmProxy` method — forwards decrypted HTTP requests between client-side and target-side TLS connections within the MITM tunnel
+- [MITM] Automatic CA certificate generation on first run; per-host certificates generated on-demand and cached in memory
+- [Routes] `handleHTTP` passes request path to `Decide()` for inline route resolution; route targets override the proxy URL per-request
+- [Routes] `handleCONNECT` triggers MITM mode when the matched location has routes; routes are matched after TLS termination
 
 ### Formula
 
-- [Brew] Update service definition and `post_install` to use `config.toml`; run `migrate` during install to auto-convert legacy configs
+- [Brew] Update service definition and `post_install` to use `config.toml`; run `migrate` and `install-certs` during install to auto-convert legacy configs and generate the CA
 
 ---
 
