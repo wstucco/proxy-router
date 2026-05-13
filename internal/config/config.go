@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -52,12 +51,17 @@ type Location struct {
 	Routes  map[string]string `toml:"routes,omitempty"   json:"routes,omitempty"`
 }
 
-// RouteMatch checks if path matches any route pattern.
-// Returns the target proxy key ("direct" or a named proxy) and true if matched.
-func (l *Location) RouteMatch(requestPath string) (string, bool) {
-	for pattern, target := range l.Routes {
-		if matched, _ := path.Match(pattern, requestPath); matched {
-			return target, true
+// MatchRoute checks if host+path matches any route prefix.
+// Routes are destination rewrites: the key is a URL prefix (host or host/path),
+// the value is the base URL to rewrite matching requests to.
+// Returns the full rewritten URL (base + unmatched suffix).
+func (l *Location) MatchRoute(host, reqPath string) (string, bool) {
+	matchKey := strings.TrimRight(host+reqPath, "/")
+	for prefix, target := range l.Routes {
+		prefix = strings.TrimRight(prefix, "/")
+		if strings.HasPrefix(matchKey, prefix) {
+			suffix := strings.TrimPrefix(matchKey, prefix)
+			return strings.TrimRight(target, "/") + suffix, true
 		}
 	}
 	return "", false

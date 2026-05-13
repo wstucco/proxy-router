@@ -6,58 +6,52 @@ import (
 	"testing"
 )
 
-func TestRouteMatch(t *testing.T) {
+func TestMatchRoute(t *testing.T) {
 	tests := []struct {
-		name     string
-		routes   map[string]string
-		path     string
-		want     string
-		wantOK   bool
+		name   string
+		routes map[string]string
+		host   string
+		path   string
+		want   string
+		wantOK bool
 	}{
-		{"exact match", map[string]string{"/api/health": "direct"}, "/api/health", "direct", true},
-		{"exact no match", map[string]string{"/api/health": "direct"}, "/api/other", "", false},
-		{"glob suffix", map[string]string{"/api/*": "direct"}, "/api/health", "direct", true},
-		{"glob suffix nested", map[string]string{"/api/*": "direct"}, "/api/v1/health", "", false},
-		{"glob prefix", map[string]string{"/*.html": "direct"}, "/index.html", "direct", true},
-		{"single char", map[string]string{"/api/?" : "direct"}, "/api/h", "direct", true},
-		{"empty routes", map[string]string{}, "/api/health", "", false},
-		{"multiple routes first match", map[string]string{"/api/*": "direct", "/health": "corp"}, "/health", "corp", true},
-		{"no match among several", map[string]string{"/a": "direct", "/b": "corp"}, "/c", "", false},
-		{"root path", map[string]string{"/": "direct"}, "/", "direct", true},
-		{"trailing slash", map[string]string{"/api/": "direct"}, "/api/", "direct", true},
+		{"host prefix", map[string]string{"httpbin.org": "https://localhost:4321"}, "httpbin.org", "/anything", "https://localhost:4321/anything", true},
+		{"host+path prefix", map[string]string{"httpbin.org/api": "https://localhost:4321"}, "httpbin.org", "/api/users", "https://localhost:4321/users", true},
+		{"no match different host", map[string]string{"httpbin.org": "https://localhost:4321"}, "example.com", "/", "", false},
+		{"no match different path", map[string]string{"httpbin.org/api": "https://localhost:4321"}, "httpbin.org", "/other", "", false},
+		{"empty routes", map[string]string{}, "httpbin.org", "/x", "", false},
+		{"trailing slash normalization", map[string]string{"example.com/": "https://localhost:8080"}, "example.com", "/foo", "https://localhost:8080/foo", true},
+		{"root path", map[string]string{"example.com": "https://localhost:9999"}, "example.com", "/", "https://localhost:9999", true},
+		{"multiple routes first match", map[string]string{"httpbin.org": "https://a:1", "httpbin.org/api": "https://b:2"}, "httpbin.org", "/api/users", "https://a:1/api/users", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			loc := &Location{Routes: tt.routes}
-			got, ok := loc.RouteMatch(tt.path)
+			got, ok := loc.MatchRoute(tt.host, tt.path)
 			if ok != tt.wantOK {
-				t.Errorf("RouteMatch() ok = %v, want %v", ok, tt.wantOK)
+				t.Errorf("MatchRoute() ok = %v, want %v", ok, tt.wantOK)
 			}
 			if got != tt.want {
-				t.Errorf("RouteMatch() = %q, want %q", got, tt.want)
+				t.Errorf("MatchRoute() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestRouteMatchOrderPreservation(t *testing.T) {
-	// Go map iteration is non-deterministic, so routes with overlapping
-	// patterns may match unpredictably. Test that all registered patterns
-	// are at least reachable.
+func TestMatchRouteOrderPreservation(t *testing.T) {
 	loc := &Location{
 		Routes: map[string]string{
-			"/api/*":    "direct",
-			"/api/health": "corp",
+			"httpbin.org": "https://localhost:4321",
 		},
 	}
 
-	got, ok := loc.RouteMatch("/api/health")
+	got, ok := loc.MatchRoute("httpbin.org", "/anything")
 	if !ok {
-		t.Error("RouteMatch(/api/health) should match one of the patterns")
+		t.Error("MatchRoute should match")
 	}
-	if got != "direct" && got != "corp" {
-		t.Errorf("RouteMatch(/api/health) = %q, want one of 'direct', 'corp'", got)
+	if got != "https://localhost:4321/anything" {
+		t.Errorf("MatchRoute = %q, want %q", got, "https://localhost:4321/anything")
 	}
 }
 

@@ -8,10 +8,10 @@ import (
 	"github.com/wstucco/proxy-router/internal/config"
 )
 
-// Decide evaluates locations top-to-bottom and returns a Decision for the given host and path.
-// Path may be empty (e.g. CONNECT tunnels); route matching is skipped in that case
-// but the location's route map is still carried in the Decision for later use.
-func Decide(cfg *config.Config, host, path string) config.Decision {
+// Decide evaluates locations top-to-bottom and returns a Decision for the given host.
+// Routes from the matched location are carried in the Decision for per-request
+// destination rewriting in the proxy handler.
+func Decide(cfg *config.Config, host string) config.Decision {
 	ssid := CurrentSSID()
 
 	// Always-no-proxy check — hardcoded, cannot be overridden
@@ -63,18 +63,6 @@ func Decide(cfg *config.Config, host, path string) config.Decision {
 	}
 
 	proxyURL := cfg.ResolveProxyURL(matched.Proxy)
-
-	// Route override — checked even when path is empty (no-op in that case)
-	if path != "" && len(matched.Routes) > 0 {
-		if target, ok := matched.RouteMatch(path); ok {
-			logEntry(host, ssid, fmt.Sprintf("location %q route %q matched → %s", matchedName, path, target), true)
-			if target == "direct" || target == "" {
-				proxyURL = ""
-			} else {
-				proxyURL = cfg.ResolveProxyURL(target)
-			}
-		}
-	}
 
 	logEntry(host, ssid, fmt.Sprintf("location %q matched → %s", matchedName, matched.Proxy), true)
 	return config.Decision{

@@ -10,7 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"path"
+	"strings"
 	"time"
 
 	"github.com/aus/proxyplease"
@@ -45,7 +45,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
-	decision := router.Decide(s.cfg, r.Host, "")
+	decision := router.Decide(s.cfg, r.Host)
 
 	// MITM mode for locations with routes (enables path-based HTTPS routing)
 	if len(decision.Routes) > 0 && s.certMgr != nil {
@@ -98,8 +98,18 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
-	decision := router.Decide(s.cfg, r.Host, r.URL.Path)
+	decision := router.Decide(s.cfg, r.Host)
 	dialer := makeDialer(decision.DNS)
+
+	// Apply route rewriting: if host+path matches a route prefix,
+	// redirect this request to the route's target URL directly.
+	if targetURL := applyRoute(decision.Routes, r.Host, r.URL.Path, r.URL.RawQuery); targetURL != nil {
+		log.Printf("[proxy] HTTP %s %s route → %s", r.Method, r.Host+requestPath(r), targetURL.String())
+		r.URL = targetURL
+		r.Host = targetURL.Host
+		// Route matched — go direct to the target, bypass location proxy
+		decision.ProxyURL = ""
+	}
 
 	var transport http.RoundTripper
 
@@ -147,24 +157,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMITM(w http.ResponseWriter, r *http.Request, decision *config.Decision) {
-	dialer := makeDialer(decision.DNS)
 	hostname := stripPort(r.Host)
-
-	targetRaw, err := dialer.DialContext(context.Background(), "tcp", r.Host)
-	if err != nil {
-		log.Printf("[proxy] MITM %s: dial failed: %v", r.Host, err)
-		http.Error(w, fmt.Sprintf("failed to connect: %v", err), http.StatusBadGateway)
-		return
-	}
-	defer targetRaw.Close()
-
-	targetTLS := tls.Client(targetRaw, &tls.Config{ServerName: hostname})
-	if err := targetTLS.Handshake(); err != nil {
-		log.Printf("[proxy] MITM %s: target TLS handshake failed: %v", r.Host, err)
-		http.Error(w, fmt.Sprintf("TLS handshake failed: %v", err), http.StatusBadGateway)
-		return
-	}
-	defer targetTLS.Close()
 
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
@@ -194,25 +187,43 @@ func (s *Server) handleMITM(w http.ResponseWriter, r *http.Request, decision *co
 	defer clientTLS.Close()
 
 	log.Printf("[proxy] MITM %s tunnel open (routes: %d)", r.Host, len(decision.Routes))
-	s.mitmProxy(clientTLS, targetTLS, decision)
+	s.mitmProxy(clientTLS, hostname, decision)
 }
 
-func (s *Server) mitmProxy(clientTLS, targetTLS *tls.Conn, decision *config.Decision) {
+func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *config.Decision) {
+	dialer := makeDialer(decision.DNS)
 	for {
 		req, err := http.ReadRequest(bufio.NewReader(clientTLS))
 		if err != nil {
 			break
 		}
 
-		if len(decision.Routes) > 0 {
-			if target, ok := matchRoute(decision.Routes, req.URL.Path); ok {
-				log.Printf("[proxy] MITM route %q matched → %s", req.URL.Path, target)
-				if target != "" && target != "direct" {
-					// Route to a specific upstream — for now fall through to
-					// the existing direct connection. Full upstream-per-route
-					// support requires establishing a new upstream CONNECT.
-				}
-			}
+		// Determine target: apply route rewriting or fall back to original host
+		targetHost := origHost
+		if targetURL := applyRoute(decision.Routes, origHost, req.URL.Path, req.URL.RawQuery); targetURL != nil {
+			targetHost = targetURL.Host
+			req.URL = targetURL
+			req.Host = targetURL.Host
+		} else {
+			// Reconstruct full URL for the original host
+			req.URL.Scheme = "https"
+			req.URL.Host = origHost
+		}
+
+		log.Printf("[proxy] MITM %s %s", req.Method, req.URL.String())
+
+		// Dial target (always a fresh connection per request)
+		targetConn, err := dialer.DialContext(context.Background(), "tcp", targetHost)
+		if err != nil {
+			log.Printf("[proxy] MITM: dial %s failed: %v", targetHost, err)
+			break
+		}
+
+		targetTLS := tls.Client(targetConn, &tls.Config{ServerName: stripPort(targetHost)})
+		if err := targetTLS.Handshake(); err != nil {
+			targetConn.Close()
+			log.Printf("[proxy] MITM: TLS handshake to %s failed: %v", targetHost, err)
+			break
 		}
 
 		req.RequestURI = ""
@@ -221,28 +232,56 @@ func (s *Server) mitmProxy(clientTLS, targetTLS *tls.Conn, decision *config.Deci
 		req.Header.Del("Proxy-Authorization")
 
 		if err := req.Write(targetTLS); err != nil {
-			log.Printf("[proxy] MITM: write request failed: %v", err)
+			targetTLS.Close()
+			log.Printf("[proxy] MITM: write request to %s failed: %v", targetHost, err)
 			break
 		}
 
 		resp, err := http.ReadResponse(bufio.NewReader(targetTLS), req)
+		targetTLS.Close()
 		if err != nil {
-			log.Printf("[proxy] MITM: read response failed: %v", err)
+			log.Printf("[proxy] MITM: read response from %s failed: %v", targetHost, err)
 			break
 		}
 
 		if err := resp.Write(clientTLS); err != nil {
 			resp.Body.Close()
-			log.Printf("[proxy] MITM: write response failed: %v", err)
+			log.Printf("[proxy] MITM: write response to client failed: %v", err)
 			break
 		}
 		resp.Body.Close()
 
-		// HTTP/1.1 without Connection: keep-alive → done
 		if req.Close {
 			break
 		}
 	}
+}
+
+func applyRoute(routes map[string]string, host, path, query string) *url.URL {
+	matchKey := strings.TrimRight(host+path, "/")
+	for prefix, target := range routes {
+		prefix = strings.TrimRight(prefix, "/")
+		if strings.HasPrefix(matchKey, prefix) {
+			base, err := url.Parse(target)
+			if err != nil {
+				continue
+			}
+			suffix := strings.TrimPrefix(matchKey, prefix)
+			base.Path = strings.TrimRight(base.Path, "/") + suffix
+			if query != "" {
+				base.RawQuery = query
+			}
+			return base
+		}
+	}
+	return nil
+}
+
+func requestPath(r *http.Request) string {
+	if r.URL.Path != "" {
+		return r.URL.Path
+	}
+	return "/"
 }
 
 func stripPort(host string) string {
@@ -250,15 +289,6 @@ func stripPort(host string) string {
 		return h
 	}
 	return host
-}
-
-func matchRoute(routes map[string]string, requestPath string) (string, bool) {
-	for pattern, target := range routes {
-		if matched, _ := path.Match(pattern, requestPath); matched {
-			return target, true
-		}
-	}
-	return "", false
 }
 
 func dialViaUpstream(proxyURL, domain, target string, dialer *net.Dialer) (net.Conn, error) {

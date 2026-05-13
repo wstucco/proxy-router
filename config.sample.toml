@@ -16,29 +16,36 @@ ips = ["10.0.0.0/8"]
 dns = ["10.0.0.1", "10.0.0.2"]
 no_proxy = [".internal.corp.com", "192.168.0.0/24"]
 
-# Routes override the proxy decision based on URL path (works for both HTTP and HTTPS).
-# When routes are defined on a location, proxy-router automatically performs TLS
-# interception (MITM) on HTTPS connections to extract the path for matching.
+# Routes rewrite the destination URL for matching requests.
+# They work like a reverse proxy / API gateway: requests whose
+# host+path starts with the route key are redirected to the route value.
 #
-# Route patterns use Go's path.Match glob syntax:
-#   /api/health        exact path match
-#   /api/*             prefix match (any single path segment after /api/)
-#   *.static.com       suffix match
+# Route key: URL prefix (hostname or hostname/path)
+# Route value: base URL to redirect matching requests to
 #
-# Route targets:
-#   "direct"   → bypass any upstream proxy for this path
-#   "<name>"   → use a named proxy from [proxies] for this path
-#   "" / omit  → use the location's default proxy
+# Examples:
+#   "httpbin.org" = "https://localhost:4321"
+#     → httpbin.org/anything → localhost:4321/anything
 #
-# Requires the proxy-router CA certificate to be trusted:
+#   "repo1.maven.org/maven2/com/company/" = "https://nexus.internal/repo/"
+#     → repo1.maven.org/maven2/com/company/foo/1.0/foo-1.0.pom
+#       → nexus.internal/repo/foo/1.0/foo-1.0.pom
+#
+# HTTP: routes are applied directly (path is already visible).
+# HTTPS: routes require TLS interception (MITM), enabled automatically
+# when routes are defined on a location. The proxy-router CA cert must
+# be trusted for HTTPS routes to work.
+#
+# Install the CA cert:
+#   proxy-router install-certs
 #   sudo security add-trusted-cert -d -r trustRoot \
 #     -k /Library/Keychains/System.keychain /opt/homebrew/etc/proxy-router/cacert.pem
 #
 # Uncomment to use:
 # [locations.office.routes]
-# "/api/health" = "direct"
-# "/api/*" = "direct"
-# "/legacy/*" = "direct"
+# "httpbin.org" = "https://localhost:4321"
+# "repo1.maven.org/maven2/com/company/" = "https://nexus.internal/repo/"
+# "repo1.maven.org/maven2/com/other/" = "https://nexus.internal/other-repo/"
 
 [locations.home-office]
 proxy = "corp"
