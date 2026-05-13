@@ -199,21 +199,27 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 		}
 
 		// Determine target: apply route rewriting or fall back to original host
+		routed := false
 		targetHost := origHost
 		if targetURL := applyRoute(decision.Routes, origHost, req.URL.Path, req.URL.RawQuery); targetURL != nil {
+			routed = true
 			targetHost = targetURL.Host
 			req.URL = targetURL
 			req.Host = targetURL.Host
 		} else {
-			// Reconstruct full URL for the original host
 			req.URL.Scheme = "https"
 			req.URL.Host = origHost
 		}
 
 		log.Printf("[proxy] MITM %s %s", req.Method, req.URL.String())
 
-		// Dial target (always a fresh connection per request)
-		targetConn, err := dialer.DialContext(context.Background(), "tcp", targetHost)
+		// Dial target — routed requests always go direct, non-routed may use upstream proxy
+		var targetConn net.Conn
+		if !routed && decision.ProxyURL != "" {
+			targetConn, err = dialViaUpstream(decision.ProxyURL, decision.Domain, targetHost, dialer)
+		} else {
+			targetConn, err = dialer.DialContext(context.Background(), "tcp", targetHost)
+		}
 		if err != nil {
 			log.Printf("[proxy] MITM: dial %s failed: %v", targetHost, err)
 			break

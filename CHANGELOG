@@ -35,7 +35,7 @@
 - [MITM] Automatic CA certificate generation on first run; per-host certificates generated on-demand and cached in memory
 - [Routes] `handleHTTP` applies route rewriting before forwarding — matched routes redirect the request to the route's target URL directly, bypassing the location proxy
 - [Routes] `handleCONNECT` triggers MITM mode when the matched location has routes; each decrypted HTTP request is routed individually — unmatched requests go to the original host, matched requests are redirected to the route target
-- [MITM] `mitmProxy` establishes a fresh TLS connection per request to the target determined by route matching, then forwards the decrypted request and returns the response
+- [MITM] `mitmProxy` establishes a fresh TLS connection per request to the target determined by route matching; non-routed requests respect the location's upstream proxy, routed requests go direct
 
 ### Formula
 
