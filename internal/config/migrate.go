@@ -89,6 +89,8 @@ func MigrateIfLegacy(jsonPath, tomlPath string, data []byte) (*Config, error) {
 		cfg.Locations[name] = loc
 	}
 
+	cfg.Version = CurrentVersion
+
 	// Write backup of the original JSON
 	backupPath := jsonPath + ".bak"
 	if err := os.WriteFile(backupPath, data, 0644); err != nil {

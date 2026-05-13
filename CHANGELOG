@@ -14,6 +14,7 @@
 - [Config] Legacy format detection — clear error message with link to documentation when old `upstream`/`rules` format is detected
 - [Config] Auto-migrate new JSON config format to TOML (in addition to legacy format); `Load()` converts any JSON config seamlessly
 - [Config] Remove unused `routes` field from `Location` struct
+- [Config] Stamped `version` during migration — migrated configs are version-tracked for future schema upgrades
 
 ### Bug fixes
 
