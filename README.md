@@ -1,6 +1,6 @@
 # proxy-router
 
-A lightweight local proxy (`localhost:1337`) that forwards connections to an upstream proxy or goes direct, based on configurable locations evaluated per-request.
+A lightweight local proxy (`localhost:1337`) that forwards connections to an upstream proxy or goes direct, based on configurable locations evaluated per-request. Supports destination rewriting (routes) for both HTTP and HTTPS (via TLS interception).
 
 ## Changelog
 
@@ -10,7 +10,11 @@ See [CHANGELOG](CHANGELOG) for the full history.
 
 - HTTP and HTTPS (`CONNECT`) proxying
 - Location-based routing: forward to a named proxy or go direct based on SSID, hostname, or IP
+- **Destination rewriting (routes)** — redirect matching `host+path` requests to a different URL, like an API gateway
+- **TLS interception (MITM)** — enables path-based routing on HTTPS connections; automatic when routes are defined
 - Authenticated upstream proxies with automatic Basic/NTLM/Negotiate negotiation
+- **TOML config** — auto-migrated from JSON on first run (supports both legacy `upstream/rules` and current `proxies/locations` formats)
+- **`version` field** in config for future schema upgrades
 - Hot config reload — save the file and changes apply within 1 second (or send `SIGHUP`)
 - macOS network change listener via `SCDynamicStore` — SSID cache updated on network events
 - Brew service and manual LaunchAgent support
@@ -20,6 +24,8 @@ See [CHANGELOG](CHANGELOG) for the full history.
 proxy-router sits at `localhost:1337` and intercepts all HTTP/HTTPS traffic routed through it. For each connection it evaluates the configured locations and decides whether to forward the connection to a named upstream proxy or connect directly.
 
 Locations match on the current Wi-Fi SSID, destination hostname, or destination IP. This makes it ideal for automatically switching between a corporate proxy at the office and a direct connection at home, without changing any system settings manually.
+
+**Routes** extend locations with destination rewriting: if a request's `host+path` matches a route prefix, the request is redirected to the route's target URL. Routes work on HTTP directly and on HTTPS via automatic TLS interception (MITM). Non-routed requests in MITM mode still respect the location's upstream proxy.
 
 ## Upstream proxy authentication
 
@@ -58,7 +64,8 @@ The domain is required for NTLM. Without it, Basic auth may work initially but f
 brew tap wstucco/tap
 brew install proxy-router
 brew services start proxy-router
-proxy-router install   # installs shell completions
+proxy-router install          # installs shell completions
+proxy-router install-certs    # generates CA cert for HTTPS routes (see output for trust instructions)
 ```
 
 ### Manual
@@ -81,6 +88,7 @@ proxy-router run                         Start the proxy
 proxy-router run -listen localhost:1337 -config ~/myconf.toml
 proxy-router migrate                     Migrate config from legacy format
 proxy-router install                     Write config, install completions, register LaunchAgent
+proxy-router install-certs               Generate CA certificate for TLS MITM and print trust instructions
 proxy-router uninstall                   Deregister LaunchAgent, remove completions (keeps config)
 proxy-router uninstall --prune           Remove everything including config
 proxy-router completion <zsh|bash|fish>  Print completion script
@@ -160,6 +168,7 @@ Settings → Appearance & Behavior → System Settings → HTTP Proxy → Manual
 |---|---|
 | `/opt/homebrew/bin/proxy-router` | Binary |
 | `/opt/homebrew/etc/proxy-router/config.toml` | Config |
+| `/opt/homebrew/etc/proxy-router/cacert.pem` | CA certificate (TLS MITM) |
 | `/opt/homebrew/var/log/proxy-router.log` | Log |
 | managed by `brew services` | LaunchAgent |
 
@@ -169,6 +178,7 @@ Settings → Appearance & Behavior → System Settings → HTTP Proxy → Manual
 |---|---|
 | `/usr/local/bin/proxy-router` | Binary |
 | `/usr/local/etc/proxy-router/config.toml` | Config |
+| `/usr/local/etc/proxy-router/cacert.pem` | CA certificate (TLS MITM) |
 | `/usr/local/var/log/proxy-router/proxy-router.log` | Log |
 | `/Library/LaunchAgents/com.wstucco.proxy-router.plist` | LaunchAgent |
 
@@ -187,6 +197,7 @@ Locations are matched by SSID, IP, and/or domain (OR within each array, AND acro
 `localhost`, `127.0.0.1`, and `::1` are always direct — they cannot be proxied regardless of config.
 
 ```toml
+version = "1"
 listen = "localhost:1337"
 
 [proxies]
@@ -204,6 +215,10 @@ ips = ["10.0.0.0/8"]
 dns = ["10.0.0.1", "10.0.0.2"]
 no_proxy = [".internal.corp.com", "192.168.0.0/24"]
 
+# Routes rewrite matching requests to a different URL
+[locations.work.routes]
+"repo1.maven.org/maven2/com/company/" = "https://nexus.internal/repo/"
+
 [locations.co-working]
 proxy = "corp"
 ssids = ["Barista"]
@@ -212,6 +227,7 @@ ssids = ["Barista"]
 ### Fields
 
 **Top-level:**
+- `version` — schema version (for future migration support); do not change
 - `listen` — address to listen on
 - `proxies` — named proxy URL map; referenced by locations and defaults
 - `defaults.proxy` — `"direct"` or a key in `proxies`; used when no location matches
@@ -225,6 +241,30 @@ ssids = ["Barista"]
 - `domains` — hostname suffix list (OR logic); `.corp.com` matches all subdomains
 - `dns` — custom DNS servers for this location (does not affect system DNS)
 - `no_proxy` — destinations to bypass proxy within this location; supports exact IP, CIDR, domain, `.domain` suffix, `*`
+- `routes` — destination rewriting rules (table); key is URL prefix (`host` or `host/path`), value is the target base URL
+
+### Routes
+
+Routes rewrite requests whose `host+path` starts with the route key to the route's target URL. The unmatched path suffix is appended to the target.
+
+```toml
+[locations.work.routes]
+# httpbin.org/anything → localhost:4321/anything
+"httpbin.org" = "https://localhost:4321"
+
+# repo1.maven.org/maven2/com/company/foo/1.0/foo.pom
+#   → nexus.internal/repo/foo/1.0/foo.pom
+"repo1.maven.org/maven2/com/company/" = "https://nexus.internal/repo/"
+```
+
+- **HTTP**: routes are applied inline before forwarding
+- **HTTPS**: routes require TLS interception (MITM), enabled automatically when a location has routes defined. Run `proxy-router install-certs` to generate the CA certificate, then trust it on your machine:
+  ```bash
+  sudo security add-trusted-cert -d -r trustRoot \
+    -k /Library/Keychains/System.keychain /opt/homebrew/etc/proxy-router/cacert.pem
+  ```
+- Non-routed requests in MITM mode still respect the location's upstream proxy setting
+- Routed requests always go directly to the route target (bypass the location proxy)
 
 ## Shell completions
 
