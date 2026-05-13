@@ -34,6 +34,9 @@ class ProxyRouter < Formula
     unless (etc/"proxy-router/config.toml").exist?
       (etc/"proxy-router/config.toml").write Utils.safe_popen_read(bin/"proxy-router", "run", "-gen-config")
     end
+
+    # Generate CA certificate for TLS MITM (idempotent)
+    system bin/"proxy-router", "install-certs"
   end
 
   def caveats
