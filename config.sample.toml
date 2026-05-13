@@ -16,6 +16,30 @@ ips = ["10.0.0.0/8"]
 dns = ["10.0.0.1", "10.0.0.2"]
 no_proxy = [".internal.corp.com", "192.168.0.0/24"]
 
+# Routes override the proxy decision based on URL path (works for both HTTP and HTTPS).
+# When routes are defined on a location, proxy-router automatically performs TLS
+# interception (MITM) on HTTPS connections to extract the path for matching.
+#
+# Route patterns use Go's path.Match glob syntax:
+#   /api/health        exact path match
+#   /api/*             prefix match (any single path segment after /api/)
+#   *.static.com       suffix match
+#
+# Route targets:
+#   "direct"   → bypass any upstream proxy for this path
+#   "<name>"   → use a named proxy from [proxies] for this path
+#   "" / omit  → use the location's default proxy
+#
+# Requires the proxy-router CA certificate to be trusted:
+#   sudo security add-trusted-cert -d -r trustRoot \
+#     -k /Library/Keychains/System.keychain /opt/homebrew/etc/proxy-router/cacert.pem
+#
+# Uncomment to use:
+# [locations.office.routes]
+# "/api/health" = "direct"
+# "/api/*" = "direct"
+# "/legacy/*" = "direct"
+
 [locations.home-office]
 proxy = "corp"
 ssids = ["home-office"]
