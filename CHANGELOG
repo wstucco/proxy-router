@@ -18,6 +18,14 @@
 
 - [Router] Fix CIDR matching for IP-based no_proxy entries
 
+### CLI
+
+- [Migrate] Make `migrate` command idempotent for Homebrew `post_install` — exits cleanly when no legacy `config.json` exists or the JSON is not in legacy format, instead of fatally aborting
+
+### Formula
+
+- [Brew] Update service definition and `post_install` to use `config.toml`; run `migrate` during install to auto-convert legacy configs
+
 ---
 
 ## v0.2.1 (2026-04-14)

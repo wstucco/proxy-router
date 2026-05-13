@@ -114,13 +114,22 @@ var plistTemplate = template.Must(template.New("plist").Parse(`<?xml version="1.
 func cmdMigrate() {
 	p := detectPaths()
 	jsonPath := strings.TrimSuffix(p.cfgFile, ".toml") + ".json"
+
 	data, err := os.ReadFile(jsonPath)
+	if os.IsNotExist(err) {
+		fmt.Println("✓ no legacy config.json found, nothing to migrate")
+		return
+	}
 	if err != nil {
 		log.Fatalf("migrate: reading legacy config: %v", err)
 	}
+
 	_, err = config.MigrateIfLegacy(jsonPath, p.cfgFile, data)
 	if err != nil {
-		log.Fatalf("migrate: %v", err)
+		// Unsupported format or other non-fatal migration error — skip
+		fmt.Printf("⚠ migrate: %v\n", err)
+		fmt.Println("⚠ config.json is not a legacy config, skipping migration")
+		return
 	}
 	fmt.Printf("✓ config migrated → %s\n", p.cfgFile)
 }
