@@ -16,6 +16,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/wstucco/proxy-router/internal/certmanager"
 	"github.com/wstucco/proxy-router/internal/config"
 	"github.com/wstucco/proxy-router/internal/proxy"
 	"github.com/wstucco/proxy-router/internal/router"
@@ -38,13 +39,15 @@ const (
 )
 
 type paths struct {
-	mode    installMode
-	prefix  string // /opt/homebrew or /usr/local
-	bin     string
-	cfgDir  string
-	cfgFile string
-	logDir  string
-	plist   string // only set for manual installs
+	mode      installMode
+	prefix    string // /opt/homebrew or /usr/local
+	bin       string
+	cfgDir    string
+	cfgFile   string
+	logDir    string
+	caCertFile string
+	caKeyFile  string
+	plist     string // only set for manual installs
 }
 
 func detectPaths() paths {
@@ -73,6 +76,8 @@ func detectPaths() paths {
 	}
 
 	p.cfgFile = filepath.Join(p.cfgDir, "config.toml")
+	p.caCertFile = filepath.Join(p.cfgDir, "cacert.pem")
+	p.caKeyFile = filepath.Join(p.cfgDir, "cakey.pem")
 	return p
 }
 
@@ -191,6 +196,40 @@ func cmdInstall() {
 	}
 
 	fmt.Printf("\nEdit config: %s\n", p.cfgFile)
+}
+
+// ─── install-certs ────────────────────────────────────────────────────────────
+
+func cmdInstallCerts() {
+	p := detectPaths()
+
+	// Ensure cert directory exists
+	if err := os.MkdirAll(p.cfgDir, 0755); err != nil {
+		log.Fatalf("install-certs: creating config dir: %v", err)
+	}
+
+	// Initialize cert manager (generates CA if not present)
+	if _, err := certmanager.NewManager(p.caCertFile, p.caKeyFile); err != nil {
+		log.Fatalf("install-certs: %v", err)
+	}
+
+	fmt.Printf("✓ CA certificate → %s\n", p.caCertFile)
+	fmt.Println()
+	fmt.Println("To trust the certificate, run one of the following:")
+	fmt.Println()
+	fmt.Println("  macOS (system keychain, requires sudo):")
+	fmt.Println("    sudo security add-trusted-cert -d -r trustRoot \\")
+	fmt.Printf("      -k /Library/Keychains/System.keychain %s\n", p.caCertFile)
+	fmt.Println()
+	fmt.Println("  macOS (user keychain, no sudo):")
+	fmt.Printf("    security add-trusted-cert -d -r trustRoot \\\n")
+	fmt.Printf("      -k ~/Library/Keychains/login.keychain-db %s\n", p.caCertFile)
+	fmt.Println()
+	fmt.Println("  Firefox (NSS cert store):")
+	fmt.Println("    certutil -A -n \"proxy-router\" -t \"TC,C,C\" \\")
+	fmt.Printf("      -d ~/.mozilla/firefox/*.default-release -i %s\n", p.caCertFile)
+	fmt.Println()
+	fmt.Println("After trusting the CA, restart proxy-router.")
 }
 
 // ─── uninstall ────────────────────────────────────────────────────────────────
@@ -392,9 +431,16 @@ func cmdRun(args []string) {
 
 	go router.StartNetworkListener()
 
+	// Initialize certificate manager for TLS MITM (generates CA on first run)
+	mgr, err := certmanager.NewManager(p.caCertFile, p.caKeyFile)
+	if err != nil {
+		log.Fatalf("certmanager: %v", err)
+	}
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		current := cfgPtr.Load()
 		srv := proxy.New(current)
+		srv.SetCertManager(mgr)
 		srv.ServeHTTP(w, r)
 	})
 
@@ -414,38 +460,47 @@ USAGE:
   proxy-router <command> [flags]
 
 COMMANDS:
-  run         Start the proxy
-  install     Write default config, install completions, register LaunchAgent (manual install only)
-  uninstall   Deregister LaunchAgent, remove completions (config kept by default)
-  completion  Generate shell completion script (zsh, bash, fish)
-  version     Print version
-  help        Show this help
+  run             Start the proxy
+  install         Write default config, install completions, register LaunchAgent (manual install only)
+  install-certs   Generate and show how to install CA certificate for TLS MITM
+  uninstall       Deregister LaunchAgent, remove completions (config kept by default)
+  completion      Generate shell completion script (zsh, bash, fish)
+  version         Print version
+  help            Show this help
 
 RUN FLAGS:
   -config <path>    Path to config file
-                    default (brew):   /opt/homebrew/etc/proxy-router/config.json
-                    default (manual): /usr/local/etc/proxy-router/config.json
+                    default (brew):   /opt/homebrew/etc/proxy-router/config.toml
+                    default (manual): /usr/local/etc/proxy-router/config.toml
   -listen <addr>    Override listen address (e.g. localhost:33000)
   -gen-config       Print an example config.toml and exit
 
 UNINSTALL FLAGS:
   --prune           Also delete the config directory
 
+TLS MITM:
+  When a location has route rules defined, proxy-router automatically performs
+  TLS interception on HTTPS connections to enable path-based routing.
+  Run 'proxy-router install-certs' to generate and install the CA certificate.
+
 EXAMPLES:
   proxy-router install
-  proxy-router run -listen localhost:33000 -config ~/myconf.json
+  proxy-router install-certs
+  proxy-router run -listen localhost:33000 -config ~/myconf.toml
   proxy-router uninstall --prune
   proxy-router completion zsh > ~/.zsh/completions/_proxy-router
 
 PATHS (manual install):
   Binary:      /usr/local/bin/proxy-router
-  Config:      /usr/local/etc/proxy-router/config.json
+  Config:      /usr/local/etc/proxy-router/config.toml
+  CA cert:     /usr/local/etc/proxy-router/cacert.pem
   LaunchAgent: /Library/LaunchAgents/com.wstucco.proxy-router.plist
   Logs:        /usr/local/var/log/proxy-router/proxy-router.{log,err}
 
 PATHS (brew install):
   Binary:      /opt/homebrew/bin/proxy-router
-  Config:      /opt/homebrew/etc/proxy-router/config.json
+  Config:      /opt/homebrew/etc/proxy-router/config.toml
+  CA cert:     /opt/homebrew/etc/proxy-router/cacert.pem
   Service:     managed by brew services
   Logs:        /opt/homebrew/var/log/proxy-router.{log,err}
 
@@ -482,6 +537,7 @@ _proxy_router() {
   commands=(
     'run:Start the proxy'
     'install:Install config, completions, and LaunchAgent'
+    'install-certs:Generate and install CA certificate for TLS MITM'
     'uninstall:Stop and remove LaunchAgent and completions'
     'completion:Generate shell completion script'
     'version:Print version'
@@ -520,7 +576,7 @@ const bashCompletion = `_proxy_router() {
   local cur prev
   _init_completion || return
 
-  local commands="run install uninstall completion version help"
+  local commands="run install install-certs uninstall completion version help"
 
   case "$prev" in
     proxy-router) COMPREPLY=($(compgen -W "$commands" -- "$cur")); return ;;
@@ -541,12 +597,13 @@ const fishCompletion = `# proxy-router fish completion
 
 complete -c proxy-router -f
 
-complete -c proxy-router -n "__fish_use_subcommand" -a run        -d "Start the proxy"
-complete -c proxy-router -n "__fish_use_subcommand" -a install    -d "Install config, completions, and LaunchAgent"
-complete -c proxy-router -n "__fish_use_subcommand" -a uninstall  -d "Stop and remove LaunchAgent and completions"
-complete -c proxy-router -n "__fish_use_subcommand" -a completion -d "Generate shell completion script"
-complete -c proxy-router -n "__fish_use_subcommand" -a version    -d "Print version"
-complete -c proxy-router -n "__fish_use_subcommand" -a help       -d "Show help"
+complete -c proxy-router -n "__fish_use_subcommand" -a run          -d "Start the proxy"
+complete -c proxy-router -n "__fish_use_subcommand" -a install      -d "Install config, completions, and LaunchAgent"
+complete -c proxy-router -n "__fish_use_subcommand" -a install-certs -d "Generate and install CA certificate for TLS MITM"
+complete -c proxy-router -n "__fish_use_subcommand" -a uninstall    -d "Stop and remove LaunchAgent and completions"
+complete -c proxy-router -n "__fish_use_subcommand" -a completion   -d "Generate shell completion script"
+complete -c proxy-router -n "__fish_use_subcommand" -a version      -d "Print version"
+complete -c proxy-router -n "__fish_use_subcommand" -a help         -d "Show help"
 
 complete -c proxy-router -n "__fish_seen_subcommand_from run" -l config     -d "Path to config file" -r -F
 complete -c proxy-router -n "__fish_seen_subcommand_from run" -l listen     -d "Override listen address" -r
@@ -571,6 +628,8 @@ func main() {
 
 	case "install":
 		cmdInstall()
+	case "install-certs":
+		cmdInstallCerts()
 	case "uninstall":
 		prune := len(os.Args) > 2 && os.Args[2] == "--prune"
 		cmdUninstall(prune)
