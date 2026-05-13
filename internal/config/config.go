@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os"
@@ -62,8 +63,8 @@ type Decision struct {
 //
 // Detection order:
 //  1. Path ends in .toml and file exists → parse as TOML
-//  2. Path ends in .toml but file missing → look for <same-base>.json, migrate it
-//  3. Path ends in .json → parse as JSON, detect legacy vs new format, convert to .toml
+//  2. Path ends in .toml but file missing → look for <same-base>.json, auto-migrate it to .toml
+//  3. Path ends in .json → auto-migrate to .toml (supports both legacy and new JSON formats)
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 
@@ -102,17 +103,36 @@ func migrateFromJSONFile(jsonPath, tomlPath string) (*Config, error) {
 }
 
 func migrateFromJSONData(jsonPath, tomlPath string, data []byte) (*Config, error) {
-	// Only legacy JSON format (upstream/rules fields) is supported for migration
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	_, hasUpstream := raw["upstream"]
 	_, hasRules := raw["rules"]
-	if !hasUpstream && !hasRules {
-		return nil, fmt.Errorf("unsupported JSON config format — migrate to TOML (see https://github.com/wstucco/proxy-router/wiki/configuration)")
+	if hasUpstream || hasRules {
+		return MigrateIfLegacy(jsonPath, tomlPath, data)
 	}
-	return MigrateIfLegacy(jsonPath, tomlPath, data)
+
+	// New JSON format — unmarshal directly
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	if _, err := finalize(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	backupPath := jsonPath + ".bak"
+	if err := os.WriteFile(backupPath, data, 0644); err != nil {
+		log.Printf("[migrate] warning: could not write backup to %s: %v", backupPath, err)
+	} else {
+		log.Printf("[migrate] backup saved → %s", backupPath)
+	}
+	if err := writeTOML(tomlPath, &cfg); err != nil {
+		return nil, fmt.Errorf("writing migrated config: %w", err)
+	}
+	log.Printf("[migrate] config migrated from JSON to TOML → %s", tomlPath)
+	return &cfg, nil
 }
 
 func finalize(cfg *Config) (*Config, error) {
