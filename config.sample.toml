@@ -20,6 +20,11 @@ proxy = "direct"
 # Supports: wildcard "*", CIDR "10.0.0.0/8", domain ".internal", exact match.
 no_proxy = []
 
+# Routes in [defaults] apply regardless of which location matches.
+# Location-specific routes override same-key defaults.
+# See routes documentation below for syntax.
+[defaults.routes]
+
 # ── Office location ────────────────────────────────────────────────────────────
 # Matches when the current Wi-Fi SSID OR destination IP falls in one of the
 # defined ranges OR the destination hostname matches one of the domain suffixes.
@@ -45,8 +50,11 @@ no_proxy = [".internal.corp.com", "192.168.0.0/24"]
 # Routes rewrite requests matching host+path to a different URL, like a
 # reverse proxy / API gateway. Unmatched requests use the location's proxy.
 #
-#   "httpbin.org" = "https://localhost:4321"
-#     → httpbin.org/anything → localhost:4321/anything
+# Routes can be defined under a location (location-specific) or under [defaults]
+# (apply everywhere). Location routes override defaults for the same key.
+#
+#   "www.repubblica.it" = "https://httpbin.org/"
+#     → www.repubblica.it/{path} → httpbin.org/{path}
 #
 #   "repo1.maven.org/maven2/com/company/" = "https://nexus.internal/repo/"
 #     → repo1.maven.org/maven2/com/company/foo/1.0/foo.pom

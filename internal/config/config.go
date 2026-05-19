@@ -38,8 +38,9 @@ type LogConfig struct {
 
 // Defaults defines the fallback behavior when no location matches.
 type Defaults struct {
-	Proxy   string   `toml:"proxy,omitempty"    json:"proxy,omitempty"`
-	NoProxy []string `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
+	Proxy   string            `toml:"proxy,omitempty"    json:"proxy,omitempty"`
+	NoProxy []string          `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
+	Routes  map[string]string `toml:"routes,omitempty"   json:"routes,omitempty"`
 }
 
 // Location defines a named network context with matchers and proxy settings.
@@ -335,6 +336,11 @@ corp = "http://username:password@corp-proxy:8080"
 [defaults]
 proxy = "direct"
 no_proxy = []
+
+# Routes in defaults apply regardless of which location matches.
+# They can be overridden per-location by defining the same key.
+[defaults.routes]
+# "httpbin.org" = "https://localhost:4321"
 
 # Locations — first match wins
 [locations.work]

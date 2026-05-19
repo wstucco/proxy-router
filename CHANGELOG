@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.1 (2026-05-19)
+
+### Enhancements
+
+- [Config] Add `routes` to `[defaults]` — routes defined here apply regardless of which location matches; location routes override same-key defaults
+- [Log] Add structured logger with levels (`debug`, `info`, `warn`, `error`) and per-request correlation IDs — replaces raw `log.Printf`
+- [Log] Add `[log]` section to config for setting log level (`level = "info"`)
+- [Log] Add deduplicating logger for high-frequency messages (router decisions)
+- [Log] Add `RedactURL` helper to prevent credential leakage in logs
+- [Log] Promote MITM route-match messages to `info` level so routing decisions are visible
+
+### Bug fixes
+
+- [Reload] Add content-hash comparison to config reload — prevents spurious reloads on file "touch" without content changes
+- [CLI] Replace `log.Fatalf` with clean error messages in `install`, `install-certs`, `migrate` commands
+- [CI] Copy formula from source repo instead of sed-patching old tap formula — ensures tap always has the latest formula structure
+
 ## v0.3.0 (2026-05-13)
 
 ### Enhancements

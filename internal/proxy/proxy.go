@@ -221,6 +221,10 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 			req.URL.Host = origHost
 		}
 
+		if routed {
+			log.Info("MITM %s route → %s", req.URL.String(), targetHost)
+		}
+
 		log.Debug("MITM %s %s", req.Method, req.URL.String())
 
 		// Dial target — routed requests always go direct, non-routed may use upstream proxy

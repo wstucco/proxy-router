@@ -59,10 +59,20 @@ func Decide(cfg *config.Config, host string) config.Decision {
 		return config.Decision{
 			ProxyURL: proxyURL,
 			NoProxy:  noProxy,
+			Routes:   cfg.Defaults.Routes,
 		}
 	}
 
 	proxyURL := cfg.ResolveProxyURL(matched.Proxy)
+
+	// Merge route maps: defaults.routes apply everywhere, location.routes override.
+	routes := make(map[string]string, len(cfg.Defaults.Routes)+len(matched.Routes))
+	for k, v := range cfg.Defaults.Routes {
+		routes[k] = v
+	}
+	for k, v := range matched.Routes {
+		routes[k] = v
+	}
 
 	logEntry(host, ssid, fmt.Sprintf("location %q matched → %s", matchedName, matched.Proxy), true)
 	return config.Decision{
@@ -70,7 +80,7 @@ func Decide(cfg *config.Config, host string) config.Decision {
 		Domain:   matched.Domain,
 		DNS:      matched.DNS,
 		NoProxy:  noProxy,
-		Routes:   matched.Routes,
+		Routes:   routes,
 	}
 }
 
