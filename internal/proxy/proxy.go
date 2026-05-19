@@ -57,10 +57,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request, log *logger.Logger) {
 	decision := router.Decide(s.cfg, r.Host)
 
-	// MITM mode for locations with routes (enables path-based HTTPS routing)
+	// MITM mode: only trigger when the CONNECT host matches at least one route prefix.
+	// Non-matching hosts use the normal tunnel (faster, no TLS overhead).
 	if len(decision.Routes) > 0 && s.certMgr != nil {
-		s.handleMITM(w, r, &decision, log)
-		return
+		host := stripPort(r.Host)
+		for prefix := range decision.Routes {
+			if strings.HasPrefix(host, prefix) {
+				s.handleMITM(w, r, &decision, log)
+				return
+			}
+		}
 	}
 
 	dialer := makeDialer(decision.DNS, log)
