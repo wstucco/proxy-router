@@ -43,7 +43,6 @@ static void startListening(SCDynamicStoreRef store) {
 */
 import "C"
 import (
-	"log"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -69,7 +68,7 @@ func networkDidChange(store C.SCDynamicStoreRef, changedKeys C.CFArrayRef, info 
 			return
 		}
 		cachedSSID.Store(ssid)
-		log.Printf("[network] SSID changed → %q", ssid)
+		pkgLog.Debug("SSID changed → %q", ssid)
 	}()
 }
 
@@ -80,10 +79,10 @@ func StartNetworkListener() {
 
 	store := C.createStore(nil)
 	if store == 0 {
-		log.Println("[network] failed to create SCDynamicStore, falling back to per-request lookup")
+		pkgLog.Warn("failed to create SCDynamicStore, falling back to per-request lookup")
 		return
 	}
 	defer C.CFRelease(C.CFTypeRef(store))
-	log.Println("[network] listening for network changes")
+	pkgLog.Info("listening for network changes")
 	C.startListening(store)
 }

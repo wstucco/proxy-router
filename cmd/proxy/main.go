@@ -1,11 +1,12 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/wstucco/proxy-router/internal/certmanager"
 	"github.com/wstucco/proxy-router/internal/config"
+	pkgLog "github.com/wstucco/proxy-router/internal/log"
 	"github.com/wstucco/proxy-router/internal/proxy"
 	"github.com/wstucco/proxy-router/internal/router"
 )
@@ -126,7 +128,8 @@ func cmdMigrate() {
 		return
 	}
 	if err != nil {
-		log.Fatalf("migrate: reading legacy config: %v", err)
+		fmt.Fprintf(os.Stderr, "error: migrate: reading legacy config: %v\n", err)
+		os.Exit(1)
 	}
 
 	_, err = config.MigrateIfLegacy(jsonPath, p.cfgFile, data)
@@ -144,11 +147,13 @@ func cmdInstall() {
 
 	// 1. Write default config if not present
 	if err := os.MkdirAll(p.cfgDir, 0755); err != nil {
-		log.Fatalf("install: creating config dir %s: %v", p.cfgDir, err)
+		fmt.Fprintf(os.Stderr, "error: install: creating config dir %s: %v\n", p.cfgDir, err)
+		os.Exit(1)
 	}
 	if _, err := os.Stat(p.cfgFile); os.IsNotExist(err) {
 		if err := os.WriteFile(p.cfgFile, []byte(config.DefaultConfig()), 0644); err != nil {
-			log.Fatalf("install: writing config: %v", err)
+			fmt.Fprintf(os.Stderr, "error: install: writing config: %v\n", err)
+			os.Exit(1)
 		}
 		fmt.Printf("✓ config    → %s (default, please edit)\n", p.cfgFile)
 	} else {
@@ -161,14 +166,17 @@ func cmdInstall() {
 	// 3. Register LaunchAgent (manual only — brew uses `brew services`)
 	if p.mode == modeManual {
 		if err := os.MkdirAll(p.logDir, 0755); err != nil {
-			log.Fatalf("install: creating log dir: %v", err)
+			fmt.Fprintf(os.Stderr, "error: install: creating log dir: %v\n", err)
+			os.Exit(1)
 		}
 		if err := os.MkdirAll(filepath.Dir(p.plist), 0755); err != nil {
-			log.Fatalf("install: creating LaunchAgents dir: %v", err)
+			fmt.Fprintf(os.Stderr, "error: install: creating LaunchAgents dir: %v\n", err)
+			os.Exit(1)
 		}
 		f, err := os.Create(p.plist)
 		if err != nil {
-			log.Fatalf("install: creating plist (try with sudo): %v", err)
+			fmt.Fprintf(os.Stderr, "error: install: creating plist (try with sudo): %v\n", err)
+			os.Exit(1)
 		}
 		err = plistTemplate.Execute(f, map[string]string{
 			"Label":   plistLabel,
@@ -178,13 +186,15 @@ func cmdInstall() {
 		})
 		f.Close()
 		if err != nil {
-			log.Fatalf("install: writing plist: %v", err)
+			fmt.Fprintf(os.Stderr, "error: install: writing plist: %v\n", err)
+			os.Exit(1)
 		}
 		fmt.Printf("✓ plist     → %s\n", p.plist)
 
 		out, err := exec.Command("launchctl", "load", "-w", p.plist).CombinedOutput()
 		if err != nil {
-			log.Fatalf("install: launchctl load: %v\n%s", err, out)
+			fmt.Fprintf(os.Stderr, "error: install: launchctl load: %v\n%s", err, out)
+			os.Exit(1)
 		}
 		fmt.Println("✓ launchctl load → proxy-router started")
 		fmt.Printf("\nLogs: %s/proxy-router.log\n", p.logDir)
@@ -205,12 +215,14 @@ func cmdInstallCerts() {
 
 	// Ensure cert directory exists
 	if err := os.MkdirAll(p.cfgDir, 0755); err != nil {
-		log.Fatalf("install-certs: creating config dir: %v", err)
+		fmt.Fprintf(os.Stderr, "error: install-certs: creating config dir: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Initialize cert manager (generates CA if not present)
 	if _, err := certmanager.NewManager(p.caCertFile, p.caKeyFile); err != nil {
-		log.Fatalf("install-certs: %v", err)
+		fmt.Fprintf(os.Stderr, "error: install-certs: %v\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Printf("✓ CA certificate → %s\n", p.caCertFile)
@@ -352,16 +364,6 @@ func removeCompletions() {
 
 // ─── run ──────────────────────────────────────────────────────────────────────
 
-// redactURL replaces user:password in a URL with user:***.
-func redactURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.User == nil {
-		return raw
-	}
-	// Use Redacted() which replaces password with xxxxx without URL-encoding
-	return u.Redacted()
-}
-
 func cmdRun(args []string) {
 	p := detectPaths()
 
@@ -383,11 +385,28 @@ func cmdRun(args []string) {
 	if *listen != "" {
 		c.Listen = *listen
 	}
-	log.Printf("loaded config: listen=%s locations=%d proxies=%d",
-		c.Listen, len(c.Locations), len(c.Proxies))
+
+	// Apply log level from config
+	if c.Log.Level != "" {
+		lvl, err := pkgLog.ParseLevel(c.Log.Level)
+		if err != nil {
+			log.Fatalf("invalid log level in config: %v", err)
+		}
+		pkgLog.SetLevel(lvl)
+	}
 
 	var cfgPtr atomic.Pointer[config.Config]
 	cfgPtr.Store(c)
+
+	// fileHash returns a content hash of the config file (empty if unreadable).
+	fileHash := func() string {
+		data, err := os.ReadFile(*cfgFile)
+		if err != nil {
+			return ""
+		}
+		h := sha256.Sum256(data)
+		return hex.EncodeToString(h[:])
+	}
 
 	reload := func() {
 		newCfg, err := config.Load(*cfgFile)
@@ -404,8 +423,10 @@ func cmdRun(args []string) {
 
 	go func() {
 		var lastMod time.Time
+		var lastHash string
 		if fi, err := os.Stat(*cfgFile); err == nil {
 			lastMod = fi.ModTime()
+			lastHash = fileHash()
 		}
 		for range time.Tick(time.Second) {
 			fi, err := os.Stat(*cfgFile)
@@ -414,6 +435,11 @@ func cmdRun(args []string) {
 			}
 			if fi.ModTime().After(lastMod) {
 				lastMod = fi.ModTime()
+				hash := fileHash()
+				if hash == lastHash {
+					continue
+				}
+				lastHash = hash
 				log.Printf("[reload] config file changed, reloading...")
 				reload()
 			}

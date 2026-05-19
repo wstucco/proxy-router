@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/url"
 	"os"
@@ -12,7 +11,10 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	logger "github.com/wstucco/proxy-router/internal/log"
 )
+
+var pkgLog = logger.New(logger.LevelInfo, "migrate")
 
 // alwaysNoProxy are destinations that are never proxied, regardless of config.
 var alwaysNoProxy = []string{"localhost", "127.0.0.1", "::1"}
@@ -147,14 +149,14 @@ func migrateFromJSONData(jsonPath, tomlPath string, data []byte) (*Config, error
 
 	backupPath := jsonPath + ".bak"
 	if err := os.WriteFile(backupPath, data, 0644); err != nil {
-		log.Printf("[migrate] warning: could not write backup to %s: %v", backupPath, err)
+		pkgLog.Warn("could not write backup to %s: %v", backupPath, err)
 	} else {
-		log.Printf("[migrate] backup saved → %s", backupPath)
+		pkgLog.Info("backup saved → %s", backupPath)
 	}
 	if err := writeTOML(tomlPath, &cfg); err != nil {
 		return nil, fmt.Errorf("writing migrated config: %w", err)
 	}
-	log.Printf("[migrate] config migrated from JSON to TOML → %s", tomlPath)
+	pkgLog.Info("config migrated from JSON to TOML → %s", tomlPath)
 	return &cfg, nil
 }
 
@@ -321,6 +323,9 @@ func MatchDomain(host string, domains []string) bool {
 func DefaultConfig() string {
 	return `version = "1"
 listen = "localhost:1337"
+
+[log]
+level = "info"
 
 # Named upstream proxies
 [proxies]

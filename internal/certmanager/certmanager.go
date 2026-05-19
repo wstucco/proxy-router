@@ -10,21 +10,24 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"log"
 	"math/big"
 	"net"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	logger "github.com/wstucco/proxy-router/internal/log"
 )
 
 const (
-	caKeySize  = 2048
-	certKeySize = 2048
-	caValidity  = 10 * 365 * 24 * time.Hour
+	caKeySize   = 2048
+	certKeySize  = 2048
+	caValidity   = 10 * 365 * 24 * time.Hour
 	certValidity = 1 * 365 * 24 * time.Hour
 )
+
+var pkgLog = logger.New(logger.LevelInfo, "certmanager")
 
 type Manager struct {
 	caCertPath string
@@ -57,11 +60,11 @@ func (m *Manager) loadOrGenerateCA() error {
 		return m.parseCA(caCertPEM, caKeyPEM)
 	}
 
-	log.Printf("[certmanager] generating CA certificate...")
+	pkgLog.Info("generating CA certificate...")
 	if err := m.generateCA(); err != nil {
 		return err
 	}
-	log.Printf("[certmanager] CA certificate generated → %s", m.caCertPath)
+	pkgLog.Info("CA certificate generated → %s", m.caCertPath)
 	return nil
 }
 
