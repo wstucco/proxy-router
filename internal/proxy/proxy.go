@@ -225,6 +225,13 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 			req.URL.Host = origHost
 		}
 
+		// Ensure the target has an explicit port for upstream proxy dialing.
+		// Route URLs often omit the default port (443 for HTTPS), but the
+		// upstream proxy requires it in the CONNECT request.
+		if _, _, err := net.SplitHostPort(targetHost); err != nil {
+			targetHost = net.JoinHostPort(targetHost, "443")
+		}
+
 		if routed {
 			log.Info("MITM %s route → %s", req.URL.String(), targetHost)
 		}
