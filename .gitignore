@@ -14,3 +14,8 @@ vendor/
 
 # Local development notes (not for distribution)
 NOTES.md
+
+# Temporary / local files
+config.json.bak
+crash.log
+github-token

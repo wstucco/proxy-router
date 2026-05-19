@@ -26,6 +26,12 @@ type Config struct {
 	Proxies   map[string]string    `toml:"proxies,omitempty"   json:"proxies,omitempty"`
 	Defaults  Defaults             `toml:"defaults"            json:"defaults"`
 	Locations map[string]*Location `toml:"locations,omitempty" json:"locations,omitempty"`
+	Log       LogConfig            `toml:"log"                 json:"log"`
+}
+
+// LogConfig controls logging behavior.
+type LogConfig struct {
+	Level string `toml:"level,omitempty" json:"level,omitempty"`
 }
 
 // Defaults defines the fallback behavior when no location matches.
