@@ -117,8 +117,6 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request, log *logger.
 		log.Info("HTTP %s %s route → %s", r.Method, r.Host+requestPath(r), targetURL.String())
 		r.URL = targetURL
 		r.Host = targetURL.Host
-		// Route matched — go direct to the target, bypass location proxy
-		decision.ProxyURL = ""
 	}
 
 	var transport http.RoundTripper
@@ -227,9 +225,9 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 
 		log.Debug("MITM %s %s", req.Method, req.URL.String())
 
-		// Dial target — routed requests always go direct, non-routed may use upstream proxy
+		// Dial target — use upstream proxy when configured, regardless of routing
 		var targetConn net.Conn
-		if !routed && decision.ProxyURL != "" {
+		if decision.ProxyURL != "" {
 			targetConn, err = dialViaUpstream(decision.ProxyURL, decision.Domain, targetHost, dialer, log)
 		} else {
 			targetConn, err = dialer.DialContext(context.Background(), "tcp", targetHost)
