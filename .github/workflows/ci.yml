@@ -129,6 +129,7 @@ jobs:
           git clone https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git tap
 
           FORMULA="tap/Formula/proxy-router.rb"
+          cp Formula/proxy-router.rb "$FORMULA"
           sed -i '' "s|version \".*\"|version \"${VERSION#v}\"|" "$FORMULA"
           sed -i '' "s|sha256 \".*\"|sha256 \"$SHA256\"|" "$FORMULA"
 
