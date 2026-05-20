@@ -19,3 +19,4 @@ NOTES.md
 config.json.bak
 crash.log
 github-token
+config.{json,toml}
