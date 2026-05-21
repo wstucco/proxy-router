@@ -27,7 +27,7 @@ const (
 	certValidity = 1 * 365 * 24 * time.Hour
 )
 
-var pkgLog = logger.New(logger.LevelInfo, "certmanager")
+var pkgLog = logger.New(logger.LevelDebug, "certmanager")
 
 type Manager struct {
 	caCertPath string

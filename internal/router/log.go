@@ -6,7 +6,7 @@ import (
 	logger "github.com/wstucco/proxy-router/internal/log"
 )
 
-var pkgLog = logger.New(logger.LevelInfo, "router")
+var pkgLog = logger.New(logger.LevelDebug, "router")
 var dedupLog = logger.NewDedup(pkgLog)
 
 // logEntry logs a router decision, deduplicating consecutive identical entries.

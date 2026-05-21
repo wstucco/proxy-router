@@ -20,7 +20,7 @@ import (
 	"github.com/wstucco/proxy-router/internal/router"
 )
 
-var pkgLog = logger.New(logger.LevelInfo, "proxy")
+var pkgLog = logger.New(logger.LevelDebug, "proxy")
 
 func shortID() string {
 	b := make([]byte, 4)

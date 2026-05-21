@@ -14,7 +14,7 @@ import (
 	logger "github.com/wstucco/proxy-router/internal/log"
 )
 
-var pkgLog = logger.New(logger.LevelInfo, "migrate")
+var pkgLog = logger.New(logger.LevelDebug, "migrate")
 
 // alwaysNoProxy are destinations that are never proxied, regardless of config.
 var alwaysNoProxy = []string{"localhost", "127.0.0.1", "::1"}
