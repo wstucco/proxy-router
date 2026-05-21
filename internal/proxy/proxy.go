@@ -119,7 +119,13 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request, log *logger.
 
 	// Apply route rewriting: if host+path matches a route prefix,
 	// redirect this request to the route's target URL directly.
-	if targetURL := applyRoute(decision.Routes, r.Host, r.URL.Path, r.URL.RawQuery); targetURL != nil {
+	routed := false
+	if targetURL, err := applyRoute(decision.Routes, r.Host, r.URL.Path, r.URL.RawQuery); err != nil {
+		log.Error("HTTP %s %s route error: %v", r.Method, r.Host+requestPath(r), err)
+		http.Error(w, fmt.Sprintf("invalid route target: %v", err), http.StatusBadGateway)
+		return
+	} else if targetURL != nil {
+		routed = true
 		log.Info("HTTP %s %s route → %s", r.Method, r.Host+requestPath(r), targetURL.String())
 		r.URL = targetURL
 		r.Host = targetURL.Host
@@ -127,7 +133,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request, log *logger.
 
 	var transport http.RoundTripper
 
-	if decision.ProxyURL != "" {
+	if shouldUseUpstreamProxy(&decision, r.Host, routed) {
 		log.Info("HTTP %s %s via upstream", r.Method, r.Host)
 		upstreamURL, err := url.Parse(decision.ProxyURL)
 		if err != nil {
@@ -215,7 +221,11 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 		// Determine target: apply route rewriting or fall back to original host
 		routed := false
 		targetHost := origHost
-		if targetURL := applyRoute(decision.Routes, origHost, req.URL.Path, req.URL.RawQuery); targetURL != nil {
+		if targetURL, err := applyRoute(decision.Routes, origHost, req.URL.Path, req.URL.RawQuery); err != nil {
+			log.Error("MITM: route error for %s: %v", req.URL.String(), err)
+			_ = sendHTTPError(clientTLS, http.StatusBadGateway, fmt.Sprintf("invalid route target: %v", err))
+			break
+		} else if targetURL != nil {
 			routed = true
 			targetHost = targetURL.Host
 			req.URL = targetURL
@@ -226,10 +236,15 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 		}
 
 		// Ensure the target has an explicit port for upstream proxy dialing.
-		// Route URLs often omit the default port (443 for HTTPS), but the
-		// upstream proxy requires it in the CONNECT request.
+		// Route URLs often omit the default port, but the upstream proxy
+		// requires it in the CONNECT request.
 		if _, _, err := net.SplitHostPort(targetHost); err != nil {
-			targetHost = net.JoinHostPort(targetHost, "443")
+			targetHost, err = addDefaultPort(targetHost, req.URL.Scheme)
+			if err != nil {
+				log.Error("MITM: %v", err)
+				_ = sendHTTPError(clientTLS, http.StatusBadGateway, err.Error())
+				break
+			}
 		}
 
 		if routed {
@@ -238,9 +253,10 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 
 		log.Debug("MITM %s %s", req.Method, req.URL.String())
 
-		// Dial target — use upstream proxy when configured, regardless of routing
+		// Dial target — routed requests still honor the location's upstream
+		// proxy unless the destination matches no_proxy.
 		var targetConn net.Conn
-		if decision.ProxyURL != "" {
+		if shouldUseUpstreamProxy(decision, targetHost, routed) {
 			targetConn, err = dialViaUpstream(decision.ProxyURL, decision.Domain, targetHost, dialer, log)
 		} else {
 			targetConn, err = dialer.DialContext(context.Background(), "tcp", targetHost)
@@ -288,24 +304,88 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 	}
 }
 
-func applyRoute(routes map[string]string, host, path, query string) *url.URL {
+func applyRoute(routes map[string]string, host, path, query string) (*url.URL, error) {
 	matchKey := strings.TrimRight(host+path, "/")
 	for prefix, target := range routes {
 		prefix = strings.TrimRight(prefix, "/")
 		if strings.HasPrefix(matchKey, prefix) {
-			base, err := url.Parse(target)
+			base, err := parseRouteTarget(target)
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("parse target %q: %w", target, err)
 			}
 			suffix := strings.TrimPrefix(matchKey, prefix)
 			base.Path = strings.TrimRight(base.Path, "/") + suffix
 			if query != "" {
 				base.RawQuery = query
 			}
-			return base
+			return base, nil
 		}
 	}
-	return nil
+	return nil, nil
+}
+
+func parseRouteTarget(target string) (*url.URL, error) {
+	if target == "" {
+		return nil, fmt.Errorf("empty route target")
+	}
+
+	if strings.Contains(target, "://") {
+		u, err := url.Parse(target)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := defaultPortForScheme(u.Scheme); err != nil {
+			return nil, err
+		}
+		return u, nil
+	}
+
+	u, err := url.Parse("https://" + strings.TrimPrefix(target, "//"))
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
+}
+
+func addDefaultPort(host, scheme string) (string, error) {
+	port, err := defaultPortForScheme(scheme)
+	if err != nil {
+		return "", err
+	}
+	if host == "" {
+		return "", fmt.Errorf("route target is missing host")
+	}
+	if _, _, err := net.SplitHostPort(host); err == nil {
+		return host, nil
+	}
+	return net.JoinHostPort(host, port), nil
+}
+
+func shouldUseUpstreamProxy(decision *config.Decision, host string, routed bool) bool {
+	if decision.ProxyURL == "" {
+		return false
+	}
+	if routed && config.MatchNoProxy(stripPort(host), decision.NoProxy) {
+		return false
+	}
+	return true
+}
+
+func defaultPortForScheme(scheme string) (string, error) {
+	switch scheme {
+	case "", "https":
+		return "443", nil
+	case "http":
+		return "80", nil
+	default:
+		return "", fmt.Errorf("unsupported route target scheme %q", scheme)
+	}
+}
+
+func sendHTTPError(w io.Writer, status int, msg string) error {
+	body := msg + "\n"
+	_, err := fmt.Fprintf(w, "HTTP/1.1 %d %s\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", status, http.StatusText(status), len(body), body)
+	return err
 }
 
 func requestPath(r *http.Request) string {

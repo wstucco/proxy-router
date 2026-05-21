@@ -263,8 +263,8 @@ Routes rewrite requests whose `host+path` starts with the route key to the route
   sudo security add-trusted-cert -d -r trustRoot \
     -k /Library/Keychains/System.keychain /opt/homebrew/etc/proxy-router/cacert.pem
   ```
-- Non-routed requests in MITM mode still respect the location's upstream proxy setting
-- Routed requests always go directly to the route target (bypass the location proxy)
+- Route targets without an explicit scheme default to `https` and port `443`; explicit `http` targets use port `80`. Any other scheme is rejected.
+- Requests in MITM mode still respect the location's upstream proxy setting, including routed requests, unless the destination matches `no_proxy`
 
 ## Shell completions
 

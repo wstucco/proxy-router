@@ -62,8 +62,10 @@ no_proxy = [".internal.corp.com", "192.168.0.0/24"]
 #
 # HTTP routes work directly. HTTPS routes require TLS interception (MITM),
 # enabled automatically when a location has routes defined. In MITM mode,
-# non-routed requests still respect the location's upstream proxy setting;
-# routed requests go directly to the route target. The CA cert must be trusted:
+# requests still respect the location's upstream proxy setting, including
+# routed requests, unless the destination matches no_proxy. The CA cert must be trusted:
+# Route targets without an explicit scheme default to https/443; explicit http
+# targets use port 80. Unsupported schemes are rejected.
 #   proxy-router install-certs
 #   sudo security add-trusted-cert -d -r trustRoot \
 #     -k /Library/Keychains/System.keychain /opt/homebrew/etc/proxy-router/cacert.pem
