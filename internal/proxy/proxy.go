@@ -411,13 +411,21 @@ func dialViaUpstream(proxyURL, domain, target string, dialer *net.Dialer, log *l
 	// Try Negotiate/Kerberos auth first (macOS GSS.framework, others TBD).
 	// Uses the system credential cache — no config needed, survives password
 	// changes within the TGT renewal window.
+	negotiateTried := false
 	if negotiateDial != nil {
-		conn, err := negotiateDial(u, target, dialer)
-		if err == nil {
-			log.Info("auth Negotiate for %s", u.Host)
-			return conn, nil
+		if cachedErr, skip := skipNegotiate(u.Host); skip {
+			log.Debug("auth Negotiate skipped for %s (cached: %s)", u.Host, cachedErr)
+		} else {
+			negotiateTried = true
+			conn, err := negotiateDial(u, target, dialer)
+			if err == nil {
+				clearNegotiateFailure(u.Host)
+				log.Info("auth Negotiate for %s", u.Host)
+				return conn, nil
+			}
+			recordNegotiateFailure(u.Host, err.Error())
+			log.Debug("auth Negotiate failed for %s: %v", u.Host, err)
 		}
-		log.Debug("auth Negotiate failed for %s: %v", u.Host, err)
 	}
 
 	var user, pass string
@@ -437,6 +445,9 @@ func dialViaUpstream(proxyURL, domain, target string, dialer *net.Dialer, log *l
 
 	conn, err := dialCtx(context.Background(), "tcp", target)
 	if err != nil {
+		if user == "" && pass == "" && negotiateTried {
+			log.Warn("no credentials for %s — Kerberos TGT or proxy URL password required", u.Host)
+		}
 		return nil, fmt.Errorf("dialing upstream %s: %w", u.Host, err)
 	}
 

@@ -418,6 +418,7 @@ func cmdRun(args []string) {
 			newCfg.Listen = *listen
 		}
 		cfgPtr.Store(newCfg)
+		proxy.ClearNegotiateCache()
 		log.Printf("[reload] config reloaded: locations=%d", len(newCfg.Locations))
 	}
 
