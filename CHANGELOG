@@ -1,6 +1,37 @@
 # Changelog
 
-## v0.3.1 (2026-05-19)
+## v0.4.0 (2026-05-21)
+
+### Enhancements
+
+- [Auth] Add Kerberos/Negotiate authentication via GSS.framework (macOS) — replaces Windows-only Negotiate in `proxyplease` with native macOS support using the system credential cache
+- [Auth] No config changes required — `negotiateDial` hook is tried before `proxyplease`; uses `gss_acquire_cred(GSS_C_NO_CREDENTIAL)` so no password is needed when a valid TGT exists
+- [Auth] Automatic fallback to NTLM/Basic via `proxyplease` if Negotiate fails (no TGT, wrong realm, proxy doesn't support it)
+- [Auth] SPN constructed as `HTTP@<proxy-canonical-fqdn>` via forward+reverse DNS lookup — handles short names and CNAMEs commonly used in proxy URLs
+- [Auth] Negotiate failure cache (30s TTL) — avoids hammering the KDC/proxy on repeated requests after a failure; cache cleared on config reload and on successful auth
+- [Log] Change all package-level loggers from `LevelInfo` to `LevelDebug` so the `[log] level` config setting can control verbosity in both directions
+- [Log] Add WARN-level message when both Negotiate and NTLM/Basic fail without any credentials configured
+
+### Limitations
+
+- [Auth] Second round (mutual auth) not yet handled — single-round Kerberos only
+- [Auth] gokrb5 pure Go for Linux planned for v0.5.0
+- [Auth] Auto-TGT acquisition from config password planned for v0.5.0
+
+## v0.3.3 (2026-05-20)
+
+### Bug fixes
+
+- [MITM] Only trigger MITM when CONNECT host matches at least one route prefix — non-matching hosts use the normal tunnel, avoiding unnecessary TLS overhead and potential proxy blocks
+- [MITM] Fix port missing from route target when dialing through upstream proxy — route URLs like `https://example.com` produce `Host: "example.com"` (no port), causing `CONNECT example.com:80` (default HTTP) instead of `CONNECT example.com:443`; the upstream proxy returned 403
+
+## v0.3.2 (2026-05-19)
+
+### Bug fixes
+
+- [Routes] Revert "routed requests bypass upstream proxy" — routed requests again respect the location's upstream proxy; MITM bypass was causing routed requests to fail when the destination was only reachable through the corporate proxy
+
+---
 
 ### Enhancements
 
