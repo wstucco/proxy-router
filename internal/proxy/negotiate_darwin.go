@@ -28,21 +28,24 @@ func init() {
 
 // gssNegotiateDial attempts to authenticate to the upstream proxy using
 // Kerberos/Negotiate via Apple's GSS.framework.
-func gssNegotiateDial(proxyURL *url.URL, target string, dialer *net.Dialer) (net.Conn, error) {
+func gssNegotiateDial(proxyURL *url.URL, target string, dialer *net.Dialer) (_ net.Conn, retErr error) {
 	conn, err := dialer.DialContext(context.Background(), "tcp", proxyURL.Host)
 	if err != nil {
 		return nil, fmt.Errorf("connect to proxy %s: %w", proxyURL.Host, err)
 	}
+	defer func() {
+		if retErr != nil {
+			conn.Close()
+		}
+	}()
 
 	req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", target, target)
 	if _, err := fmt.Fprint(conn, req); err != nil {
-		conn.Close()
 		return nil, fmt.Errorf("send CONNECT: %w", err)
 	}
 
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 	if err != nil {
-		conn.Close()
 		return nil, fmt.Errorf("read CONNECT response: %w", err)
 	}
 	resp.Body.Close()
@@ -53,12 +56,10 @@ func gssNegotiateDial(proxyURL *url.URL, target string, dialer *net.Dialer) (net
 	}
 
 	if resp.StatusCode != http.StatusProxyAuthRequired {
-		conn.Close()
 		return nil, fmt.Errorf("unexpected status from proxy: %s", resp.Status)
 	}
 
 	if !hasNegotiateScheme(resp.Header["Proxy-Authenticate"]) {
-		conn.Close()
 		return nil, fmt.Errorf("proxy does not advertise Negotiate")
 	}
 
@@ -67,10 +68,8 @@ func gssNegotiateDial(proxyURL *url.URL, target string, dialer *net.Dialer) (net
 	spn := "HTTP@" + canonicalizeHostname(proxyURL.Host)
 	pkgLog.Debug("GSS: SPN = %s", spn)
 
-	// Round 1: send initial Negotiate token
 	status, err := negotiateRoundTrip(conn, spn, target, nil)
 	if err != nil {
-		conn.Close()
 		return nil, err
 	}
 	if status == http.StatusOK {
@@ -78,7 +77,6 @@ func gssNegotiateDial(proxyURL *url.URL, target string, dialer *net.Dialer) (net
 		return conn, nil
 	}
 
-	conn.Close()
 	return nil, fmt.Errorf("Negotiate failed (need second round): status=%d", status)
 }
 
