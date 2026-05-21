@@ -408,13 +408,25 @@ func dialViaUpstream(proxyURL, domain, target string, dialer *net.Dialer, log *l
 		return nil, fmt.Errorf("parsing upstream URL: %w", err)
 	}
 
+	// Try Negotiate/Kerberos auth first (macOS GSS.framework, others TBD).
+	// Uses the system credential cache — no config needed, survives password
+	// changes within the TGT renewal window.
+	if negotiateDial != nil {
+		conn, err := negotiateDial(u, target, dialer)
+		if err == nil {
+			log.Info("auth Negotiate for %s", u.Host)
+			return conn, nil
+		}
+		log.Debug("auth Negotiate failed for %s: %v", u.Host, err)
+	}
+
 	var user, pass string
 	if u.User != nil {
 		user = u.User.Username()
 		pass, _ = u.User.Password()
 	}
 
-	log.Debug("dialing upstream %s", u.Host)
+	log.Debug("auth NTLM/Basic for %s via proxyplease", u.Host)
 
 	dialCtx := proxyplease.NewDialContext(proxyplease.Proxy{
 		URL:      u,
