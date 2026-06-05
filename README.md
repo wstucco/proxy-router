@@ -13,9 +13,13 @@ See [CHANGELOG](CHANGELOG) for the full history.
 - **Destination rewriting (routes)** — redirect matching `host+path` requests to a different URL, like an API gateway
 - **TLS interception (MITM)** — enables path-based routing on HTTPS connections; automatic when routes are defined
 - Authenticated upstream proxies with automatic Basic/NTLM/Negotiate negotiation
+- **macOS-native Kerberos/Negotiate auth** via GSS.framework (no password needed with valid TGT)
+- **Negotiate failure cache** (30s TTL) — avoids hammering KDC/proxy on repeated failures
 - **TOML config** — auto-migrated from JSON on first run (supports both legacy `upstream/rules` and current `proxies/locations` formats)
 - **`version` field** in config for future schema upgrades
-- Hot config reload — save the file and changes apply within 1 second (or send `SIGHUP`)
+- **Structured logging** with configurable levels (`debug`, `info`, `warn`, `error`) — `[log]` section in config
+- **Configurable routes in `[defaults]`** — apply regardless of location; location routes override same-key defaults
+- Hot config reload — save the file and changes apply within 1 second (or send `SIGHUP`); content-hash guard avoids spurious reloads
 - macOS network change listener via `SCDynamicStore` — SSID cache updated on network events
 - Brew service and manual LaunchAgent support
 
@@ -25,7 +29,7 @@ proxy-router sits at `localhost:1337` and intercepts all HTTP/HTTPS traffic rout
 
 Locations match on the current Wi-Fi SSID, destination hostname, or destination IP. This makes it ideal for automatically switching between a corporate proxy at the office and a direct connection at home, without changing any system settings manually.
 
-**Routes** extend locations with destination rewriting: if a request's `host+path` matches a route prefix, the request is redirected to the route's target URL. Routes work on HTTP directly and on HTTPS via automatic TLS interception (MITM). Non-routed requests in MITM mode still respect the location's upstream proxy.
+**Routes** extend locations with destination rewriting: if a request's `host+path` matches a route prefix, the request is redirected to the route's target URL. Routes work on HTTP directly and on HTTPS via automatic TLS interception (MITM). In MITM mode, both routed and non-routed requests still respect the location's upstream proxy.
 
 ## Upstream proxy authentication
 
@@ -37,6 +41,12 @@ Credentials are specified in the proxy URL inside the `proxies` table:
 [proxies]
 corp = "http://username:password@proxy.corp.com:8080"
 ```
+
+### Kerberos / Negotiate (macOS)
+
+On macOS, proxy-router uses the native GSS.framework for Kerberos/Negotiate authentication — no password is needed when a valid TGT exists in the system credential cache. The SPN is constructed as `HTTP@<proxy-canonical-fqdn>` via forward+reverse DNS lookup, handling short names and CNAMEs commonly used in proxy URLs.
+
+Negotiate is tried first; if it fails (no TGT, wrong realm, or proxy doesn't support it), proxy-router automatically falls back to NTLM/Basic via `proxyplease`. Failed Negotiate attempts are cached for 30s to avoid hammering the KDC or proxy, and the cache is cleared on config reload and on successful auth.
 
 ### Active Directory / NTLM
 
@@ -200,12 +210,20 @@ Locations are matched by SSID, IP, and/or domain (OR within each array, AND acro
 version = "1"
 listen = "localhost:1337"
 
+[log]
+level = "info"
+
 [proxies]
 corp = "http://username:password@corp-proxy:8080"
 
 [defaults]
 proxy = "direct"
 no_proxy = []
+
+# Routes in [defaults] apply regardless of which location matches.
+# Location routes override same-key defaults.
+[defaults.routes]
+# "httpbin.org" = "https://localhost:4321"
 
 [locations.work]
 proxy = "corp"
@@ -230,8 +248,10 @@ ssids = ["Barista"]
 - `version` — schema version (for future migration support); do not change
 - `listen` — address to listen on
 - `proxies` — named proxy URL map; referenced by locations and defaults
+- `log.level` — log verbosity: `"debug"`, `"info"`, `"warn"`, `"error"`
 - `defaults.proxy` — `"direct"` or a key in `proxies`; used when no location matches
 - `defaults.no_proxy` — additional destinations that always bypass the proxy
+- `defaults.routes` — destination rewriting rules applied regardless of location; location routes override same-key defaults
 
 **Location:**
 - `proxy` — key in `proxies` or a raw URL (required)
@@ -258,7 +278,7 @@ Routes rewrite requests whose `host+path` starts with the route key to the route
 ```
 
 - **HTTP**: routes are applied inline before forwarding
-- **HTTPS**: routes require TLS interception (MITM), enabled automatically when a location has routes defined. Run `proxy-router install-certs` to generate the CA certificate, then trust it on your machine:
+- **HTTPS**: routes require TLS interception (MITM), triggered per-connection only when the CONNECT host matches a route prefix (non-matching hosts use the normal tunnel). Run `proxy-router install-certs` to generate the CA certificate, then trust it on your machine:
   ```bash
   sudo security add-trusted-cert -d -r trustRoot \
     -k /Library/Keychains/System.keychain /opt/homebrew/etc/proxy-router/cacert.pem
@@ -287,8 +307,8 @@ proxy-router completion fish > ~/.config/fish/completions/proxy-router.fish
 Tag a commit to trigger a GitHub Actions build and release:
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 The CI will build the binary, create a GitHub release, and automatically update the Homebrew formula in `wstucco/homebrew-tap`. Requires a `HOMEBREW_TAP_TOKEN` secret (GitHub PAT with repo write access to the tap).

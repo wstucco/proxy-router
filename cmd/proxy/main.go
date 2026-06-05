@@ -41,15 +41,15 @@ const (
 )
 
 type paths struct {
-	mode      installMode
-	prefix    string // /opt/homebrew or /usr/local
-	bin       string
-	cfgDir    string
-	cfgFile   string
-	logDir    string
+	mode       installMode
+	prefix     string // /opt/homebrew or /usr/local
+	bin        string
+	cfgDir     string
+	cfgFile    string
+	logDir     string
 	caCertFile string
 	caKeyFile  string
-	plist     string // only set for manual installs
+	plist      string // only set for manual installs
 }
 
 func detectPaths() paths {
