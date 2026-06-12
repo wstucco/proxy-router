@@ -50,20 +50,27 @@ func Decide(cfg *config.Config, host string) config.Decision {
 
 	// No location matched — use defaults
 	if matched == nil {
+		pacURL := cfg.Defaults.PAC
 		proxyURL := cfg.ResolveProxyURL(cfg.Defaults.Proxy)
-		if proxyURL == "" {
+		if proxyURL == "" && pacURL == "" {
 			logEntry(host, ssid, "no location matched → default: direct", false)
-		} else {
+		} else if proxyURL != "" {
 			logEntry(host, ssid, "no location matched → default proxy", false)
+		} else {
+			logEntry(host, ssid, "no location matched → default PAC", false)
 		}
 		return config.Decision{
 			ProxyURL: proxyURL,
 			NoProxy:  noProxy,
 			Routes:   cfg.Defaults.Routes,
+			PAC:      pacURL,
 		}
 	}
 
-	proxyURL := cfg.ResolveProxyURL(matched.Proxy)
+	proxyURL := ""
+	if matched.Proxy != "" {
+		proxyURL = cfg.ResolveProxyURL(matched.Proxy)
+	}
 
 	// Merge route maps: defaults.routes apply everywhere, location.routes override.
 	routes := make(map[string]string, len(cfg.Defaults.Routes)+len(matched.Routes))
@@ -81,6 +88,7 @@ func Decide(cfg *config.Config, host string) config.Decision {
 		DNS:      matched.DNS,
 		NoProxy:  noProxy,
 		Routes:   routes,
+		PAC:      matched.PAC,
 	}
 }
 

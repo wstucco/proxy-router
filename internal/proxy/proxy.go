@@ -17,6 +17,7 @@ import (
 
 	"github.com/wstucco/proxy-router/internal/config"
 	logger "github.com/wstucco/proxy-router/internal/log"
+	"github.com/wstucco/proxy-router/internal/pac"
 	"github.com/wstucco/proxy-router/internal/router"
 )
 
@@ -56,6 +57,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request, log *logger.Logger) {
 	decision := router.Decide(s.cfg, r.Host)
+
+	// Evaluate PAC script if configured for this location.
+	// For CONNECT we construct a URL from the target host.
+	pacURL := "https://" + r.Host
+	if err := applyPAC(&decision, pacURL, r.Host, log); err != nil {
+		log.Warn("PAC eval failed for CONNECT %s: %v — using static config", r.Host, err)
+	}
 
 	// MITM mode: only trigger when the CONNECT host matches at least one route prefix.
 	// Non-matching hosts use the normal tunnel (faster, no TLS overhead).
@@ -115,6 +123,13 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request, log *logg
 
 func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request, log *logger.Logger) {
 	decision := router.Decide(s.cfg, r.Host)
+
+	// Evaluate PAC script if configured for this location.
+	pacURL := r.URL.String()
+	if err := applyPAC(&decision, pacURL, r.Host, log); err != nil {
+		log.Warn("PAC eval failed for HTTP %s: %v — using static config", r.Host, err)
+	}
+
 	dialer := makeDialer(decision.DNS, log)
 
 	// Apply route rewriting: if host+path matches a route prefix,
@@ -253,11 +268,19 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 
 		log.Debug("MITM %s %s", req.Method, req.URL.String())
 
+		// Evaluate PAC per-request in MITM mode — each decrypted request
+		// may target a different host, so the PAC decision may differ.
+		perReqDecision := *decision
+		mitmURL := req.URL.String()
+		if err := applyPAC(&perReqDecision, mitmURL, req.Host, log); err != nil {
+			log.Warn("MITM PAC eval for %s: %v — using location config", req.Host, err)
+		}
+
 		// Dial target — routed requests still honor the location's upstream
 		// proxy unless the destination matches no_proxy.
 		var targetConn net.Conn
-		if shouldUseUpstreamProxy(decision, targetHost, routed) {
-			targetConn, err = dialViaUpstream(decision.ProxyURL, decision.Domain, targetHost, dialer, log)
+		if shouldUseUpstreamProxy(&perReqDecision, targetHost, routed) {
+			targetConn, err = dialViaUpstream(perReqDecision.ProxyURL, perReqDecision.Domain, targetHost, dialer, log)
 		} else {
 			targetConn, err = dialer.DialContext(context.Background(), "tcp", targetHost)
 		}
@@ -359,6 +382,28 @@ func addDefaultPort(host, scheme string) (string, error) {
 		return host, nil
 	}
 	return net.JoinHostPort(host, port), nil
+}
+
+// applyPAC evaluates the PAC script from decision.PAC and updates the decision
+// with the resulting proxy URL or direct connection.
+func applyPAC(decision *config.Decision, reqURL, host string, log *logger.Logger) error {
+	if decision.PAC == "" {
+		return nil
+	}
+
+	result, err := pac.Eval(decision.PAC, reqURL, host)
+	if err != nil {
+		return err
+	}
+
+	if result.IsDirect() {
+		log.Debug("PAC → DIRECT for %s", host)
+		decision.ProxyURL = ""
+	} else {
+		log.Debug("PAC → PROXY %s for %s", result.Proxy, host)
+		decision.ProxyURL = result.ProxyURL()
+	}
+	return nil
 }
 
 func shouldUseUpstreamProxy(decision *config.Decision, host string, routed bool) bool {

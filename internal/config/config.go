@@ -41,12 +41,14 @@ type Defaults struct {
 	Proxy   string            `toml:"proxy,omitempty"    json:"proxy,omitempty"`
 	NoProxy []string          `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
 	Routes  map[string]string `toml:"routes,omitempty"   json:"routes,omitempty"`
+	PAC     string            `toml:"pac,omitempty"      json:"pac,omitempty"`
 }
 
 // Location defines a named network context with matchers and proxy settings.
 type Location struct {
-	// Proxy config
-	Proxy  string `toml:"proxy"            json:"proxy"`
+	// Proxy config — at least one of Proxy or PAC must be set
+	Proxy  string `toml:"proxy,omitempty"  json:"proxy,omitempty"`
+	PAC    string `toml:"pac,omitempty"    json:"pac,omitempty"`
 	Domain string `toml:"domain,omitempty" json:"domain,omitempty"`
 
 	// Matchers — OR within each array, AND across arrays
@@ -83,6 +85,7 @@ type Decision struct {
 	DNS      []string // custom DNS servers, nil means system default
 	NoProxy  []string // combined no_proxy list for this decision
 	Routes   map[string]string // routes from matched location, nil if none
+	PAC      string   // PAC script URL, evaluated per-request in proxy handler
 }
 
 // Load reads and validates the config file.
@@ -212,10 +215,10 @@ func (c *Config) validate() error {
 		if len(loc.SSIDs) == 0 && len(loc.IPs) == 0 && len(loc.Domains) == 0 {
 			return fmt.Errorf("location %q has no matchers (ssids, ips, or domains required)", name)
 		}
-		if loc.Proxy == "" {
-			return fmt.Errorf("location %q is missing proxy field", name)
+		if loc.Proxy == "" && loc.PAC == "" {
+			return fmt.Errorf("location %q must have a proxy or pac field", name)
 		}
-		if loc.Proxy != "direct" {
+		if loc.Proxy != "" && loc.Proxy != "direct" {
 			if _, ok := c.Proxies[loc.Proxy]; !ok {
 				if _, err := url.Parse(loc.Proxy); err != nil {
 					return fmt.Errorf("location %q proxy %q is not a known proxy name or valid URL", name, loc.Proxy)
@@ -349,6 +352,11 @@ domain = "CORP"
 ssids = ["OfficeWifi", "OfficeWifi-5G"]
 ips = ["10.0.0.0/8"]
 dns = ["10.0.0.1", "10.0.0.2"]
-no_proxy = [".internal.corp.com"]
+	no_proxy = [".internal.corp.com"]
+
+# Locations can use a PAC script instead of a static proxy.
+# [locations.pac-routed]
+# pac = "/etc/proxy-router/corporate.pac"
+# ssids = ["OfficeWifi"]
 `
 }

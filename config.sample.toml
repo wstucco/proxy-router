@@ -25,6 +25,12 @@ no_proxy = []
 # See routes documentation below for syntax.
 [defaults.routes]
 
+# PAC script URL in [defaults] applies to all locations that don't have their own.
+# Must be a file:// path or absolute local path.
+# Can be combined with proxy (proxy is fallback) or used alone.
+# [defaults]
+# pac = "/etc/proxy-router/corporate.pac"
+
 # ── Office location ────────────────────────────────────────────────────────────
 # Matches when the current Wi-Fi SSID OR destination IP falls in one of the
 # defined ranges OR the destination hostname matches one of the domain suffixes.
@@ -89,6 +95,16 @@ ssids = ["home-office"]
 proxy = "corp"
 domains = ["internal.corp.com", "jira.corp.com", "confluence.corp.com"]
 
+# ── PAC-based location (example: proxy auto-config) ──────────────────────────
+# Instead of a static proxy URL, a location can reference a PAC script.
+# The PAC script is evaluated per-request (JavaScript, FindProxyForURL).
+# When proxy and pac are both set, PAC is evaluated first; if it fails,
+# the static proxy is used as fallback.
+#
+# [locations.pac-routed]
+# pac = "/etc/proxy-router/corporate.pac"
+# ssids = ["OfficeWifi"]
+#
 # ── Home network example (add your own SSID) ──────────────────────────────────
 # Routes can rewrite to any URL. Here, corporate artifact requests go
 # directly to the company Nexus (bypassing any location proxy since routes
