@@ -19,6 +19,8 @@ See [CHANGELOG](CHANGELOG) for the full history.
 - **`version` field** in config for future schema upgrades
 - **Structured logging** with configurable levels (`debug`, `info`, `warn`, `error`) — `[log]` section in config
 - **Configurable routes in `[defaults]`** — apply regardless of location; location routes override same-key defaults
+- **PAC (Proxy Auto-Config)** — per-location PAC scripts (file:// or http://) evaluated via JS runtime
+- **Location hooks** (`on_enter` / `on_leave`) — execute shell commands when the active location changes
 - Hot config reload — save the file and changes apply within 1 second (or send `SIGHUP`); content-hash guard avoids spurious reloads
 - macOS network change listener via `SCDynamicStore` — SSID cache updated on network events
 - Brew service and manual LaunchAgent support
@@ -254,7 +256,8 @@ ssids = ["Barista"]
 - `defaults.routes` — destination rewriting rules applied regardless of location; location routes override same-key defaults
 
 **Location:**
-- `proxy` — key in `proxies` or a raw URL (required)
+- `proxy` — key in `proxies` or a raw URL; at least one of `proxy` or `pac` required
+- `pac` — PAC script URL (`file://` path or `http(s)://` URL); alternative to static proxy
 - `domain` — Active Directory domain for NTLM auth
 - `ssids` — Wi-Fi SSID list (case-insensitive, OR logic)
 - `ips` — IP or CIDR list (OR logic)
@@ -262,6 +265,8 @@ ssids = ["Barista"]
 - `dns` — custom DNS servers for this location (does not affect system DNS)
 - `no_proxy` — destinations to bypass proxy within this location; supports exact IP, CIDR, domain, `.domain` suffix, `*`
 - `routes` — destination rewriting rules (table); key is URL prefix (`host` or `host/path`), value is the target base URL
+- `hooks.on_enter` — shell command executed when this location becomes active
+- `hooks.on_leave` — shell command executed when this location is no longer active
 
 ### Routes
 
@@ -285,6 +290,56 @@ Routes rewrite requests whose `host+path` starts with the route key to the route
   ```
 - Route targets without an explicit scheme default to `https` and port `443`; explicit `http` targets use port `80`. Any other scheme is rejected.
 - Requests in MITM mode still respect the location's upstream proxy setting, including routed requests, unless the destination matches `no_proxy`
+
+### PAC (Proxy Auto-Config)
+
+Locations can use a PAC script instead of (or alongside) a static proxy. The script is evaluated per-request via a built-in JavaScript runtime.
+
+```toml
+[locations.office]
+pac = "/etc/proxy-router/corporate.pac"
+ssids = ["OfficeWifi"]
+```
+
+Or with a fallback proxy in case the PAC script fails:
+
+```toml
+[locations.office]
+proxy = "corp"
+pac = "http://proxy.company.com/proxy.pac"
+ssids = ["OfficeWifi"]
+```
+
+Supported helpers: `dnsResolve`, `isInNet`, `isPlainHostName`, `shExpMatch`, `myIpAddress`, `isResolvable`, `dnsDomainIs`, `dnsDomainLevels`, `localHostOrDomainIs`, `weekdayRange`, `dateRange`, `timeRange`.
+
+### Hooks (on_enter / on_leave)
+
+Hooks execute shell commands when the active location changes — e.g. when you switch Wi-Fi networks. This is useful for triggering side effects like connecting or disconnecting a VPN.
+
+```toml
+[locations.office]
+proxy = "corp"
+ssids = ["OfficeWifi"]
+
+[locations.office.hooks]
+  [locations.office.hooks.on_enter]
+  exec = "/usr/local/bin/disconnect-vpn"
+
+  [locations.office.hooks.on_leave]
+  exec = "/usr/local/bin/connect-vpn"
+```
+
+Hooks run via `sh -c` (supports multi-line scripts with TOML `"""`), asynchronously with a configurable timeout (default 10s). Failures are logged but never block the proxy.
+
+**Env vars** passed to the hook: `LOCATION`, `ACTION` (enter/leave), `OLD_LOCATION`, `NEW_LOCATION`.
+
+```toml
+[locations.office.hooks]
+  [locations.office.hooks.on_enter]
+  exec = """
+    echo "Entered $LOCATION (was $OLD_LOCATION)" >> /tmp/proxy-hooks.log
+  """
+```
 
 ## Shell completions
 

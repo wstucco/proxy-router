@@ -95,6 +95,21 @@ ssids = ["home-office"]
 proxy = "corp"
 domains = ["internal.corp.com", "jira.corp.com", "confluence.corp.com"]
 
+# ── Hooks (on location enter/leave) ──────────────────────────────────────────
+# Hooks execute shell commands when the active location changes (e.g. Wi-Fi
+# network switch). Useful for side effects like connecting/disconnecting a VPN.
+#
+# The command is executed via "sh -c" (multi-line strings supported with """).
+# Env vars: LOCATION, ACTION (enter/leave), OLD_LOCATION, NEW_LOCATION.
+# Timeout: 10s by default (configurable via the "timeout" field).
+#
+# [locations.office.hooks]
+#   [locations.office.hooks.on_enter]
+#   exec = "/usr/local/bin/disconnect-vpn"
+#
+#   [locations.office.hooks.on_leave]
+#   exec = "/usr/local/bin/connect-vpn"
+#
 # ── PAC-based location (example: proxy auto-config) ──────────────────────────
 # Instead of a static proxy URL, a location can reference a PAC script.
 # The PAC script is evaluated per-request (JavaScript, FindProxyForURL).

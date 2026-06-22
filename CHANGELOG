@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.5.0 (2026-06-12)
+
+### Enhancements
+
+- [PAC] Add Proxy Auto-Config (PAC) support — each location can reference a PAC script (`file://` or `http(s)://`) evaluated per-request via a JavaScript runtime (`goja`)
+- [PAC] PAC scripts can be used alone or alongside a static proxy (fallback on error)
+- [PAC] PAC helpers implemented: `dnsResolve`, `isInNet`, `isPlainHostName`, `shExpMatch`, `myIpAddress`, `dnsDomainIs`, `weekdayRange`, `dateRange`, `timeRange`
+- [PAC] Compiled script cache (file → permanent, remote → 5min TTL)
+- [PAC] Remote PAC URLs (`http://` / `https://`) supported with 10s timeout and 1MB body limit
+- [Hooks] Add `on_enter` / `on_leave` hooks per-location — execute shell commands when the active location changes (e.g. connect/disconnect VPN on network change)
+- [Hooks] Hooks run via `sh -c` (support multi-line scripts), async with configurable timeout (default 10s)
+- [Hooks] Hooks never block the proxy — failures are logged, proxy continues normally
+- [Config] Add `pac` field to `Location` and `Defaults` (file path or URL)
+- [Config] Add `hooks` field to `Location` with `on_enter` / `on_leave` sub-tables
+
 ## v0.4.0 (2026-05-21)
 
 ### Enhancements

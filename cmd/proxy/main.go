@@ -19,6 +19,7 @@ import (
 
 	"github.com/wstucco/proxy-router/internal/certmanager"
 	"github.com/wstucco/proxy-router/internal/config"
+	"github.com/wstucco/proxy-router/internal/hooks"
 	pkgLog "github.com/wstucco/proxy-router/internal/log"
 	"github.com/wstucco/proxy-router/internal/proxy"
 	"github.com/wstucco/proxy-router/internal/router"
@@ -457,6 +458,44 @@ func cmdRun(args []string) {
 	}()
 
 	go router.StartNetworkListener()
+
+	// Wire location change hooks.
+	router.OnLocationChange = func(oldName, newName string, oldLoc, newLoc *config.Location) {
+		cfg := cfgPtr.Load()
+
+		// Look up hooks: first try location-specific, fall back to global.
+		var oldHooks, newHooks *hooks.LocationHooks
+
+		if oldLoc != nil {
+			oldHooks = oldLoc.Hooks
+		} else if l, ok := cfg.Locations[oldName]; ok {
+			oldHooks = l.Hooks
+		}
+
+		if newLoc != nil {
+			newHooks = newLoc.Hooks
+		} else if l, ok := cfg.Locations[newName]; ok {
+			newHooks = l.Hooks
+		}
+
+		if oldHooks != nil {
+			env := map[string]string{
+				"LOCATION":     oldName,
+				"ACTION":       "leave",
+				"NEW_LOCATION": newName,
+			}
+			hooks.Execute(oldHooks.OnLeave, env)
+		}
+
+		if newHooks != nil {
+			env := map[string]string{
+				"LOCATION":     newName,
+				"ACTION":       "enter",
+				"OLD_LOCATION": oldName,
+			}
+			hooks.Execute(newHooks.OnEnter, env)
+		}
+	}
 
 	// Initialize certificate manager for TLS MITM (generates CA on first run)
 	mgr, err := certmanager.NewManager(p.caCertFile, p.caKeyFile)

@@ -4,9 +4,19 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/wstucco/proxy-router/internal/config"
 )
+
+var (
+	activeLocationMu     sync.Mutex
+	activeLocationName   string
+	activeLocationConfig *config.Location
+)
+
+// OnLocationChange is set by main to execute hooks when the active location changes.
+var OnLocationChange func(oldName, newName string, oldLoc, newLoc *config.Location)
 
 // Decide evaluates locations top-to-bottom and returns a Decision for the given host.
 // Routes from the matched location are carried in the Decision for per-request
@@ -59,6 +69,9 @@ func Decide(cfg *config.Config, host string) config.Decision {
 		} else {
 			logEntry(host, ssid, "no location matched → default PAC", false)
 		}
+
+		fireLocationChange("", nil)
+
 		return config.Decision{
 			ProxyURL: proxyURL,
 			NoProxy:  noProxy,
@@ -82,6 +95,10 @@ func Decide(cfg *config.Config, host string) config.Decision {
 	}
 
 	logEntry(host, ssid, fmt.Sprintf("location %q matched → %s", matchedName, matched.Proxy), true)
+
+	// Fire hook if the active location changed.
+	fireLocationChange(matchedName, matched)
+
 	return config.Decision{
 		ProxyURL: proxyURL,
 		Domain:   matched.Domain,
@@ -89,6 +106,24 @@ func Decide(cfg *config.Config, host string) config.Decision {
 		NoProxy:  noProxy,
 		Routes:   routes,
 		PAC:      matched.PAC,
+	}
+}
+
+// fireLocationChange detects transitions and calls the OnLocationChange callback.
+func fireLocationChange(newName string, newLoc *config.Location) {
+	activeLocationMu.Lock()
+	oldName := activeLocationName
+	oldLoc := activeLocationConfig
+	if oldName == newName {
+		activeLocationMu.Unlock()
+		return
+	}
+	activeLocationName = newName
+	activeLocationConfig = newLoc
+	activeLocationMu.Unlock()
+
+	if OnLocationChange != nil {
+		OnLocationChange(oldName, newName, oldLoc, newLoc)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/wstucco/proxy-router/internal/hooks"
 	logger "github.com/wstucco/proxy-router/internal/log"
 )
 
@@ -57,9 +58,10 @@ type Location struct {
 	Domains []string `toml:"domains,omitempty" json:"domains,omitempty"`
 
 	// Options
-	DNS     []string          `toml:"dns,omitempty"      json:"dns,omitempty"`
-	NoProxy []string          `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
-	Routes  map[string]string `toml:"routes,omitempty"   json:"routes,omitempty"`
+	DNS     []string             `toml:"dns,omitempty"      json:"dns,omitempty"`
+	NoProxy []string             `toml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
+	Routes  map[string]string    `toml:"routes,omitempty"   json:"routes,omitempty"`
+	Hooks   *hooks.LocationHooks `toml:"hooks,omitempty"    json:"hooks,omitempty"`
 }
 
 // MatchRoute checks if host+path matches any route prefix.
