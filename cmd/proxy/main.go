@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -50,7 +51,8 @@ type paths struct {
 	logDir     string
 	caCertFile string
 	caKeyFile  string
-	plist      string // only set for manual installs
+	plist      string // only set for macOS manual installs
+	svcFile    string // only set for Linux (systemd)
 }
 
 func detectPaths() paths {
@@ -75,7 +77,12 @@ func detectPaths() paths {
 		p.bin = filepath.Join(p.prefix, "bin", binaryName)
 		p.cfgDir = filepath.Join(p.prefix, "etc", "proxy-router")
 		p.logDir = filepath.Join(p.prefix, "var", "log", "proxy-router")
-		p.plist = filepath.Join("/Library", "LaunchAgents", plistFile)
+		if runtime.GOOS == "darwin" {
+			p.plist = filepath.Join("/Library", "LaunchAgents", plistFile)
+		} else {
+			home, _ := os.UserHomeDir()
+			p.svcFile = filepath.Join(home, ".config", "systemd", "user", binaryName+".service")
+		}
 	}
 
 	p.cfgFile = filepath.Join(p.cfgDir, "config.toml")
@@ -115,6 +122,26 @@ var plistTemplate = template.Must(template.New("plist").Parse(`<?xml version="1.
   <string>{{.LogDir}}/proxy-router.err</string>
 </dict>
 </plist>
+`))
+
+// ─── systemd service template ───────────────────────────────────────────────────
+
+var systemdServiceTemplate = template.Must(template.New("service").Parse(`[Unit]
+Description=proxy-router — location-based proxy router
+Documentation=https://github.com/wstucco/proxy-router
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart={{.Bin}} run -config {{.CfgFile}}
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
 `))
 
 // ─── install ──────────────────────────────────────────────────────────────────
@@ -164,44 +191,72 @@ func cmdInstall() {
 	// 2. Install completions
 	installCompletions()
 
-	// 3. Register LaunchAgent (manual only — brew uses `brew services`)
+	// 3. Register systemd service (Linux) or LaunchAgent (macOS)
 	if p.mode == modeManual {
-		if err := os.MkdirAll(p.logDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "error: install: creating log dir: %v\n", err)
-			os.Exit(1)
-		}
-		if err := os.MkdirAll(filepath.Dir(p.plist), 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "error: install: creating LaunchAgents dir: %v\n", err)
-			os.Exit(1)
-		}
-		f, err := os.Create(p.plist)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: install: creating plist (try with sudo): %v\n", err)
-			os.Exit(1)
-		}
-		err = plistTemplate.Execute(f, map[string]string{
-			"Label":   plistLabel,
-			"Bin":     p.bin,
-			"CfgFile": p.cfgFile,
-			"LogDir":  p.logDir,
-		})
-		f.Close()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: install: writing plist: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("✓ plist     → %s\n", p.plist)
+		if p.svcFile != "" {
+			// Linux — systemd user service
+			if err := os.MkdirAll(filepath.Dir(p.svcFile), 0755); err != nil {
+				fmt.Fprintf(os.Stderr, "error: install: creating systemd dir: %v\n", err)
+				os.Exit(1)
+			}
+			f, err := os.Create(p.svcFile)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: install: creating systemd service: %v\n", err)
+				os.Exit(1)
+			}
+			err = systemdServiceTemplate.Execute(f, map[string]string{
+				"Bin":     p.bin,
+				"CfgFile": p.cfgFile,
+			})
+			f.Close()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: install: writing systemd service: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("✓ systemd   → %s\n", p.svcFile)
+			fmt.Println()
+			fmt.Println("To enable and start the service:")
+			fmt.Println("  systemctl --user enable proxy-router")
+			fmt.Println("  systemctl --user start proxy-router")
+		} else {
+			// macOS — LaunchAgent
+			if err := os.MkdirAll(p.logDir, 0755); err != nil {
+				fmt.Fprintf(os.Stderr, "error: install: creating log dir: %v\n", err)
+				os.Exit(1)
+			}
+			if err := os.MkdirAll(filepath.Dir(p.plist), 0755); err != nil {
+				fmt.Fprintf(os.Stderr, "error: install: creating LaunchAgents dir: %v\n", err)
+				os.Exit(1)
+			}
+			f, err := os.Create(p.plist)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: install: creating plist (try with sudo): %v\n", err)
+				os.Exit(1)
+			}
+			err = plistTemplate.Execute(f, map[string]string{
+				"Label":   plistLabel,
+				"Bin":     p.bin,
+				"CfgFile": p.cfgFile,
+				"LogDir":  p.logDir,
+			})
+			f.Close()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: install: writing plist: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("✓ plist     → %s\n", p.plist)
 
-		out, err := exec.Command("launchctl", "load", "-w", p.plist).CombinedOutput()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: install: launchctl load: %v\n%s", err, out)
-			os.Exit(1)
+			out, err := exec.Command("launchctl", "load", "-w", p.plist).CombinedOutput()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: install: launchctl load: %v\n%s", err, out)
+				os.Exit(1)
+			}
+			fmt.Println("✓ launchctl load → proxy-router started")
+			fmt.Printf("\nLogs: %s/proxy-router.log\n", p.logDir)
 		}
-		fmt.Println("✓ launchctl load → proxy-router started")
-		fmt.Printf("\nLogs: %s/proxy-router.log\n", p.logDir)
 	} else {
 		fmt.Println()
-		fmt.Println("Homebrew install detected — skipping LaunchAgent.")
+		fmt.Println("Homebrew install detected — skipping service registration.")
 		fmt.Println("To start as a service:")
 		fmt.Println("  brew services start proxy-router")
 	}
@@ -251,9 +306,16 @@ func cmdUninstall(prune bool) {
 	p := detectPaths()
 
 	if p.mode == modeManual {
-		exec.Command("launchctl", "unload", "-w", p.plist).Run()
-		fmt.Println("✓ launchctl unload")
-		removeFile(p.plist, "plist")
+		if p.svcFile != "" {
+			exec.Command("systemctl", "--user", "stop", binaryName).Run()
+			exec.Command("systemctl", "--user", "disable", binaryName).Run()
+			fmt.Println("✓ systemctl stop/disable")
+			removeFile(p.svcFile, "systemd service")
+		} else {
+			exec.Command("launchctl", "unload", "-w", p.plist).Run()
+			fmt.Println("✓ launchctl unload")
+			removeFile(p.plist, "plist")
+		}
 	} else {
 		fmt.Println("Homebrew install detected — to stop the service:")
 		fmt.Println("  brew services stop proxy-router")
@@ -527,9 +589,9 @@ USAGE:
 
 COMMANDS:
   run             Start the proxy
-  install         Write default config, install completions, register LaunchAgent (manual install only)
+  install         Write default config, install completions, register service (LaunchAgent/systemd)
   install-certs   Generate and show how to install CA certificate for TLS MITM
-  uninstall       Deregister LaunchAgent, remove completions (config kept by default)
+  uninstall       Deregister service, remove completions (config kept by default)
   completion      Generate shell completion script (zsh, bash, fish)
   version         Print version
   help            Show this help
@@ -556,12 +618,19 @@ EXAMPLES:
   proxy-router uninstall --prune
   proxy-router completion zsh > ~/.zsh/completions/_proxy-router
 
-PATHS (manual install):
+PATHS (macOS manual install):
   Binary:      /usr/local/bin/proxy-router
   Config:      /usr/local/etc/proxy-router/config.toml
   CA cert:     /usr/local/etc/proxy-router/cacert.pem
   LaunchAgent: /Library/LaunchAgents/com.wstucco.proxy-router.plist
   Logs:        /usr/local/var/log/proxy-router/proxy-router.{log,err}
+
+PATHS (Linux manual install):
+  Binary:      /usr/local/bin/proxy-router
+  Config:      /usr/local/etc/proxy-router/config.toml
+  CA cert:     /usr/local/etc/proxy-router/cacert.pem
+  Systemd:     ~/.config/systemd/user/proxy-router.service
+  Logs:        journalctl --user -u proxy-router
 
 PATHS (brew install):
   Binary:      /opt/homebrew/bin/proxy-router
@@ -602,7 +671,7 @@ _proxy_router() {
   local -a commands
   commands=(
     'run:Start the proxy'
-    'install:Install config, completions, and LaunchAgent'
+    'install:Install config, completions, and systemd/LaunchAgent service'
     'install-certs:Generate and install CA certificate for TLS MITM'
     'uninstall:Stop and remove LaunchAgent and completions'
     'completion:Generate shell completion script'
@@ -664,7 +733,7 @@ const fishCompletion = `# proxy-router fish completion
 complete -c proxy-router -f
 
 complete -c proxy-router -n "__fish_use_subcommand" -a run          -d "Start the proxy"
-complete -c proxy-router -n "__fish_use_subcommand" -a install      -d "Install config, completions, and LaunchAgent"
+complete -c proxy-router -n "__fish_use_subcommand" -a install      -d "Install config, completions, and service (LaunchAgent/systemd)"
 complete -c proxy-router -n "__fish_use_subcommand" -a install-certs -d "Generate and install CA certificate for TLS MITM"
 complete -c proxy-router -n "__fish_use_subcommand" -a uninstall    -d "Stop and remove LaunchAgent and completions"
 complete -c proxy-router -n "__fish_use_subcommand" -a completion   -d "Generate shell completion script"
