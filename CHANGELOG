@@ -18,6 +18,7 @@
 - [PAC] `isInNet` no longer constructs invalid CIDR notation (#10) — removes dead code path
 - [Proxy] CONNECT PAC URL now detects scheme from port (#9) instead of hardcoded `https://`
 - [IPv6] Fix port-stripping via `net.SplitHostPort` everywhere (#7) — fixes no-proxy matching for `[::1]`
+- [Config] Route matching uses longest prefix (most specific match wins) instead of map iteration order — fixes flaky test and makes behavior deterministic
 
 ## v0.5.0 (2026-06-12)
 

@@ -89,8 +89,7 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           # Extract changelog section for this version
-          awk "/^## ${VERSION} /,/^## v[0-9]/" CHANGELOG \
-            | grep -v "^## v[0-9]" \
+          awk "/^## ${VERSION} /{p=1; next} /^## v[0-9]/{exit} p" CHANGELOG \
             | sed '/^$/N;/^\n$/d' > /tmp/changelog_body.txt
           # Append install instructions as plain text (no backtick quoting issues)
           printf '\n---\n\n' >> /tmp/changelog_body.txt
