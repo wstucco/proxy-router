@@ -27,11 +27,20 @@ jobs:
       - name: Test
         run: go test ./...
 
-  # ─── build ─────────────────────────────────────────────────────────────────
+  # ─── build (matrix: darwin arm64, linux amd64) ─────────────────────────────
   build:
-    name: Build
-    runs-on: macos-15
+    name: Build (${{ matrix.goos }}-${{ matrix.goarch }})
+    runs-on: ${{ matrix.os }}
     needs: test
+    strategy:
+      matrix:
+        include:
+          - os: macos-15
+            goos: darwin
+            goarch: arm64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
     steps:
       - uses: actions/checkout@v4
 
@@ -42,6 +51,7 @@ jobs:
 
       - name: Build
         run: |
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
           go build \
             -ldflags "-X main.version=${GITHUB_REF_NAME:-dev} -s -w" \
             -o proxy-router \
@@ -49,15 +59,15 @@ jobs:
 
       - name: Package
         run: |
-          ARCHIVE="proxy-router-${GITHUB_REF_NAME:-dev}-darwin-arm64.tar.gz"
+          ARCHIVE="proxy-router-${GITHUB_REF_NAME:-dev}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz"
           tar -czf "$ARCHIVE" proxy-router
           echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: proxy-router-darwin-arm64
-          path: proxy-router-*-darwin-arm64.tar.gz
+          name: proxy-router-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: proxy-router-*-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
           retention-days: 7
 
   # ─── release ───────────────────────────────────────────────────────────────
@@ -71,27 +81,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: proxy-router-darwin-arm64
+          path: artifacts
+          pattern: proxy-router-*
+          merge-multiple: true
 
-
-      - name: Compute sha256
-        id: sha256
+      - name: Compute sha256 (macOS)
+        id: sha256_darwin
         run: |
           ARCHIVE="proxy-router-${{ github.ref_name }}-darwin-arm64.tar.gz"
-          SHA=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
+          SHA=$(shasum -a 256 "artifacts/$ARCHIVE" | awk '{print $1}')
           echo "sha256=$SHA" >> $GITHUB_OUTPUT
 
       - name: Extract changelog for this version
         id: changelog
         run: |
           VERSION="${{ github.ref_name }}"
-          # Extract changelog section for this version
           awk "/^## ${VERSION} /{p=1; next} /^## v[0-9]/{exit} p" CHANGELOG \
             | sed '/^$/N;/^\n$/d' > /tmp/changelog_body.txt
-          # Append install instructions as plain text (no backtick quoting issues)
           printf '\n---\n\n' >> /tmp/changelog_body.txt
           printf '### Install via Homebrew (recommended)\n' >> /tmp/changelog_body.txt
           printf '```\n' >> /tmp/changelog_body.txt
@@ -101,12 +110,18 @@ jobs:
           printf 'proxy-router install\n' >> /tmp/changelog_body.txt
           printf '```\n\n' >> /tmp/changelog_body.txt
           printf '### Manual install\n' >> /tmp/changelog_body.txt
+          printf '#### macOS (ARM64)\n' >> /tmp/changelog_body.txt
           printf '```\n' >> /tmp/changelog_body.txt
           printf 'tar -xzf proxy-router-%s-darwin-arm64.tar.gz\n' "${VERSION}" >> /tmp/changelog_body.txt
           printf 'sudo mv proxy-router /usr/local/bin/proxy-router\n' >> /tmp/changelog_body.txt
           printf 'proxy-router install\n' >> /tmp/changelog_body.txt
+          printf '```\n\n' >> /tmp/changelog_body.txt
+          printf '#### Linux (AMD64)\n' >> /tmp/changelog_body.txt
           printf '```\n' >> /tmp/changelog_body.txt
-          # Write to GitHub output
+          printf 'tar -xzf proxy-router-%s-linux-amd64.tar.gz\n' "${VERSION}" >> /tmp/changelog_body.txt
+          printf 'sudo mv proxy-router /usr/local/bin/proxy-router\n' >> /tmp/changelog_body.txt
+          printf 'proxy-router install\n' >> /tmp/changelog_body.txt
+          printf '```\n' >> /tmp/changelog_body.txt
           echo "body<<EOF" >> $GITHUB_OUTPUT
           cat /tmp/changelog_body.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -117,12 +132,12 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           name: Release ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.body }}
-          files: proxy-router-${{ github.ref_name }}-darwin-arm64.tar.gz
+          files: artifacts/proxy-router-*.tar.gz
 
       - name: Update Homebrew formula
         env:
           VERSION: ${{ github.ref_name }}
-          SHA256: ${{ steps.sha256.outputs.sha256 }}
+          SHA256: ${{ steps.sha256_darwin.outputs.sha256 }}
           TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           git clone https://x-access-token:${TAP_TOKEN}@github.com/wstucco/homebrew-tap.git tap
