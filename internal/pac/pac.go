@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -361,11 +362,29 @@ func registerHelpers(vm *goja.Runtime) {
 	})
 
 	_ = vm.Set("dateRange", func(call goja.FunctionCall) goja.Value {
-		args := make([]int, 0, len(call.Arguments))
-		for _, a := range call.Arguments {
-			args = append(args, int(a.ToInteger()))
+		strArgs := make([]string, len(call.Arguments))
+		for i, a := range call.Arguments {
+			strArgs[i] = a.String()
 		}
 		now := time.Now()
+		isGMT := false
+
+		for i := 0; i < len(strArgs); i++ {
+			if strings.ToUpper(strArgs[i]) == "GMT" {
+				isGMT = true
+				strArgs = append(strArgs[:i], strArgs[i+1:]...)
+				break
+			}
+		}
+		if isGMT {
+			now = now.UTC()
+		}
+
+		args := make([]int, 0, len(strArgs))
+		for _, s := range strArgs {
+			n, _ := strconv.Atoi(s)
+			args = append(args, n)
+		}
 
 		switch len(args) {
 		case 1:
@@ -382,11 +401,11 @@ func registerHelpers(vm *goja.Runtime) {
 		case 4:
 			return vm.ToValue(int(now.Month()) >= args[0] && int(now.Month()) <= args[1] && now.Day() >= args[2] && now.Day() <= args[3])
 		case 5:
-			t := time.Date(args[4], time.Month(args[0]), args[1], 0, 0, 0, 0, time.Local)
+			t := time.Date(args[4], time.Month(args[0]), args[1], 0, 0, 0, 0, now.Location())
 			return vm.ToValue(now.After(t) || now.Equal(t))
 		case 6:
-			t1 := time.Date(args[4], time.Month(args[0]), args[1], 0, 0, 0, 0, time.Local)
-			t2 := time.Date(args[5], time.Month(args[2]), args[3], 0, 0, 0, 0, time.Local)
+			t1 := time.Date(args[4], time.Month(args[0]), args[1], 0, 0, 0, 0, now.Location())
+			t2 := time.Date(args[5], time.Month(args[2]), args[3], 0, 0, 0, 0, now.Location())
 			return vm.ToValue((now.After(t1) || now.Equal(t1)) && (now.Before(t2) || now.Equal(t2)))
 		}
 		return vm.ToValue(false)
