@@ -253,20 +253,17 @@ func registerHelpers(vm *goja.Runtime) {
 			return vm.ToValue(false)
 		}
 
-		_, cidr, err := net.ParseCIDR(pattern + "/" + mask)
-		if err != nil {
-			maskIP := net.ParseIP(mask)
-			if maskIP != nil {
-				ones := maskOnes(maskIP)
-				if ones != 0 {
-					_, cidr, err = net.ParseCIDR(fmt.Sprintf("%s/%d", pattern, ones))
+		maskIP := net.ParseIP(mask)
+		if maskIP != nil {
+			ones := maskOnes(maskIP)
+			if ones != 0 {
+				_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", pattern, ones))
+				if err == nil {
+					return vm.ToValue(cidr.Contains(ip))
 				}
 			}
 		}
-		if err != nil || cidr == nil {
-			return vm.ToValue(false)
-		}
-		return vm.ToValue(cidr.Contains(ip))
+		return vm.ToValue(false)
 	})
 
 	_ = vm.Set("dnsResolve", func(call goja.FunctionCall) goja.Value {
