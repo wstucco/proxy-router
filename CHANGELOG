@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.0 (2026-06-??)
+
+### Bug fixes
+
+- [MITM] Generate certificate before writing 200 OK response (#5) — protocol violation when cert generation fails
+- [PAC] `dateRange` now respects the GMT argument (#6) — matches spec parity with `weekdayRange`/`timeRange`
+- [PAC] File-based PAC scripts now detect file changes via mtime instead of 365-day TTL (#8)
+- [PAC] `isInNet` no longer constructs invalid CIDR notation (#10) — removes dead code path
+- [Proxy] CONNECT PAC URL now detects scheme from port (#9) instead of hardcoded `https://`
+- [IPv6] Fix port-stripping via `net.SplitHostPort` everywhere (#7) — fixes no-proxy matching for `[::1]`
+
 ## v0.5.0 (2026-06-12)
 
 ### Enhancements
