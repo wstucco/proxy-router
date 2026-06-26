@@ -164,10 +164,10 @@ func TestLoggerTypedMethods(t *testing.T) {
 		prefix  string
 		levelTag string
 	}{
-		{"Debug method", LevelDebug, func(l *Logger, msg string) { l.Debug(msg) }, "[DBG]", "[DBG]"},
-		{"Info method", LevelInfo, func(l *Logger, msg string) { l.Info(msg) }, "[INF]", "[INF]"},
-		{"Warn method", LevelWarn, func(l *Logger, msg string) { l.Warn(msg) }, "[WRN]", "[WRN]"},
-		{"Error method", LevelError, func(l *Logger, msg string) { l.Error(msg) }, "[ERR]", "[ERR]"},
+		{"Debug method", LevelDebug, func(l *Logger, msg string) { l.Debug("%s", msg) }, "[DBG]", "[DBG]"},
+		{"Info method", LevelInfo, func(l *Logger, msg string) { l.Info("%s", msg) }, "[INF]", "[INF]"},
+		{"Warn method", LevelWarn, func(l *Logger, msg string) { l.Warn("%s", msg) }, "[WRN]", "[WRN]"},
+		{"Error method", LevelError, func(l *Logger, msg string) { l.Error("%s", msg) }, "[ERR]", "[ERR]"},
 	}
 
 	for _, tt := range tests {

@@ -18,7 +18,7 @@ func logEntry(host, ssid string, action string, ruleMatched bool) {
 	} else {
 		msg = fmt.Sprintf("ssid=%q → %s", ssid, action)
 	}
-	dedupLog.Print(msg)
+	dedupLog.Print("%s", msg)
 }
 
 // FlushLog flushes any pending dedup repeat count.
