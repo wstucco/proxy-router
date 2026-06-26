@@ -35,6 +35,7 @@ func (r *Result) ProxyURL() string {
 type scriptCacheEntry struct {
 	vm      *goja.Runtime
 	expires time.Time
+	modTime time.Time // file mtime for file:// PACs, zero for remote
 }
 
 var (
@@ -101,13 +102,21 @@ func getRuntime(pacURL string) (*goja.Runtime, error) {
 	cacheMu.RUnlock()
 
 	if ok && entry.expires.After(time.Now()) {
-		return entry.vm, nil
+		// For file-based PACs, check mtime to detect changes
+		if !entry.modTime.IsZero() {
+			if fi, err := os.Stat(pacURL); err == nil && !fi.ModTime().Equal(entry.modTime) {
+				ok = false // file changed, reload
+			}
+		}
+		if ok {
+			return entry.vm, nil
+		}
 	}
 
 	vm := goja.New()
 	registerHelpers(vm)
 
-	script, err := loadScript(pacURL)
+	script, modTime, err := loadScript(pacURL)
 	if err != nil {
 		return nil, err
 	}
@@ -124,16 +133,21 @@ func getRuntime(pacURL string) (*goja.Runtime, error) {
 	}
 
 	cacheMu.Lock()
-	cache[pacURL] = &scriptCacheEntry{vm: vm, expires: expires}
+	cache[pacURL] = &scriptCacheEntry{
+		vm:      vm,
+		expires: expires,
+		modTime: modTime,
+	}
 	cacheMu.Unlock()
 
 	return vm, nil
 }
 
-func loadScript(pacURL string) (string, error) {
+func loadScript(pacURL string) (string, time.Time, error) {
+	var modTime time.Time
 	u, err := url.Parse(pacURL)
 	if err != nil {
-		return "", fmt.Errorf("invalid PAC URL %q: %w", pacURL, err)
+		return "", modTime, fmt.Errorf("invalid PAC URL %q: %w", pacURL, err)
 	}
 
 	switch u.Scheme {
@@ -143,19 +157,23 @@ func loadScript(pacURL string) (string, error) {
 			path = pacURL
 		}
 		if !filepath.IsAbs(path) {
-			return "", fmt.Errorf("PAC path must be absolute: %q", pacURL)
+			return "", modTime, fmt.Errorf("PAC path must be absolute: %q", pacURL)
+		}
+		if fi, err := os.Stat(filepath.Clean(path)); err == nil {
+			modTime = fi.ModTime()
 		}
 		data, err := os.ReadFile(filepath.Clean(path))
 		if err != nil {
-			return "", fmt.Errorf("reading PAC file %q: %w", path, err)
+			return "", modTime, fmt.Errorf("reading PAC file %q: %w", path, err)
 		}
-		return string(data), nil
+		return string(data), modTime, nil
 
 	case "http", "https":
-		return fetchRemote(u)
+		body, err := fetchRemote(u)
+		return body, modTime, err
 
 	default:
-		return "", fmt.Errorf("unsupported PAC URL scheme %q", u.Scheme)
+		return "", modTime, fmt.Errorf("unsupported PAC URL scheme %q", u.Scheme)
 	}
 }
 
