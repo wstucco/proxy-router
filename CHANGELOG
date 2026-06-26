@@ -2,6 +2,14 @@
 
 ## v0.6.0 (2026-06-??)
 
+### Enhancements
+
+- [Linux] Add Kerberos/Negotiate authentication via gokrb5 (pure Go) on Linux (#2) — replaces the macOS-only GSS.framework path with a pure Go implementation using the system credential cache (`/tmp/krb5cc_*` or `$KRB5CCNAME`)
+- [Linux] Add SSID detection on Linux via polling `iw dev <iface> link` every 5s (#3) — location-based routing now works on Linux alongside macOS CoreWLAN
+- [Linux] Add systemd user service generation in `proxy-router install` (#4) — creates `~/.config/systemd/user/proxy-router.service` for `systemctl --user {enable,start}`
+- [Linux] Add `make install-systemd` target — copies binary to `/usr/local/bin`, writes default config, installs systemd service
+- [Systemd] Uninstall stops and disables the systemd service before removing it
+
 ### Bug fixes
 
 - [MITM] Generate certificate before writing 200 OK response (#5) — protocol violation when cert generation fails
