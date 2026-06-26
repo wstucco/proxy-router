@@ -254,6 +254,7 @@ ssids = ["Barista"]
 - `defaults.proxy` — `"direct"` or a key in `proxies`; used when no location matches
 - `defaults.no_proxy` — additional destinations that always bypass the proxy
 - `defaults.routes` — destination rewriting rules applied regardless of location; location routes override same-key defaults
+- `defaults.pac` — PAC script URL applied globally when no location matches; locations with their own `pac` override
 
 **Location:**
 - `proxy` — key in `proxies` or a raw URL; at least one of `proxy` or `pac` required

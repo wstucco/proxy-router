@@ -145,8 +145,8 @@ func matchesLocation(loc *config.Location, host, ssid string) bool {
 
 func isAlwaysNoProxy(host string) bool {
 	h := host
-	if idx := strings.LastIndex(h, ":"); idx != -1 {
-		h = h[:idx]
+	if hostOnly, _, err := net.SplitHostPort(h); err == nil {
+		h = hostOnly
 	}
 	h = strings.ToLower(h)
 	for _, v := range []string{"localhost", "127.0.0.1", "::1"} {
@@ -168,8 +168,8 @@ func matchSSID(current string, list []string) bool {
 }
 
 func matchIP(host string, list []string) bool {
-	if idx := strings.LastIndex(host, ":"); idx != -1 {
-		host = host[:idx]
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
 	}
 	ip := net.ParseIP(host)
 	for _, entry := range list {

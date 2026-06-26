@@ -272,8 +272,8 @@ func EffectiveNoProxy(defaultNoProxy, locationNoProxy []string) []string {
 func MatchNoProxy(host string, noProxy []string) bool {
 	// strip port
 	h := host
-	if idx := strings.LastIndex(h, ":"); idx != -1 {
-		h = h[:idx]
+	if hostOnly, _, err := net.SplitHostPort(h); err == nil {
+		h = hostOnly
 	}
 	h = strings.ToLower(h)
 
@@ -309,8 +309,8 @@ func MatchNoProxy(host string, noProxy []string) bool {
 
 // MatchDomain returns true if host matches any of the domain suffixes.
 func MatchDomain(host string, domains []string) bool {
-	if idx := strings.LastIndex(host, ":"); idx != -1 {
-		host = host[:idx]
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
 	}
 	host = strings.ToLower(host)
 	for _, d := range domains {
