@@ -60,8 +60,15 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request, log *logg
 
 	// Evaluate PAC script if configured for this location.
 	// For CONNECT we construct a URL from the target host.
-	pacURL := "https://" + r.Host
-	if err := applyPAC(&decision, pacURL, r.Host, log); err != nil {
+	// Detect scheme from port: 443 → https, anything else → http
+	pacHost := r.Host
+	pacScheme := "https"
+	if h, p, err := net.SplitHostPort(r.Host); err == nil && p != "443" {
+		pacHost = h
+		pacScheme = "http"
+	}
+	pacURL := pacScheme + "://" + pacHost
+	if err := applyPAC(&decision, pacURL, pacHost, log); err != nil {
 		log.Warn("PAC eval failed for CONNECT %s: %v — using static config", r.Host, err)
 	}
 
