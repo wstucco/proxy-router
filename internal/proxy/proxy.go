@@ -206,13 +206,14 @@ func (s *Server) handleMITM(w http.ResponseWriter, r *http.Request, decision *co
 	}
 	defer clientRaw.Close()
 
-	_, _ = clientRaw.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
-
 	cert, err := s.certMgr.CertForHost(hostname)
 	if err != nil {
+		_ = sendHTTPError(clientRaw, http.StatusBadGateway, "certificate generation failed")
 		log.Error("MITM %s: cert generation failed: %v", r.Host, err)
 		return
 	}
+
+	_, _ = clientRaw.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
 	clientTLS := tls.Server(clientRaw, &tls.Config{Certificates: []tls.Certificate{*cert}})
 	if err := clientTLS.Handshake(); err != nil {
