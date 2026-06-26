@@ -95,8 +95,7 @@ jobs:
           SHA=$(shasum -a 256 "artifacts/$ARCHIVE" | awk '{print $1}')
           echo "sha256=$SHA" >> $GITHUB_OUTPUT
 
-      - name: Extract changelog for this version
-        id: changelog
+      - name: Prepare release body
         run: |
           VERSION="${{ github.ref_name }}"
           awk "/^## ${VERSION} /{p=1; next} /^## v[0-9]/{exit} p" CHANGELOG \
@@ -122,16 +121,13 @@ jobs:
           printf 'sudo mv proxy-router /usr/local/bin/proxy-router\n' >> /tmp/changelog_body.txt
           printf 'proxy-router install\n' >> /tmp/changelog_body.txt
           printf '```\n' >> /tmp/changelog_body.txt
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          cat /tmp/changelog_body.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           name: Release ${{ github.ref_name }}
-          body: ${{ steps.changelog.outputs.body }}
+          body_path: /tmp/changelog_body.txt
           files: artifacts/proxy-router-*.tar.gz
 
       - name: Update Homebrew formula
