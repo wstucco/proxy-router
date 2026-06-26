@@ -22,7 +22,7 @@ func TestMatchRoute(t *testing.T) {
 		{"empty routes", map[string]string{}, "httpbin.org", "/x", "", false},
 		{"trailing slash normalization", map[string]string{"example.com/": "https://localhost:8080"}, "example.com", "/foo", "https://localhost:8080/foo", true},
 		{"root path", map[string]string{"example.com": "https://localhost:9999"}, "example.com", "/", "https://localhost:9999", true},
-		{"multiple routes first match", map[string]string{"httpbin.org": "https://a:1", "httpbin.org/api": "https://b:2"}, "httpbin.org", "/api/users", "https://a:1/api/users", true},
+		{"multiple routes longest prefix wins", map[string]string{"httpbin.org": "https://a:1", "httpbin.org/api": "https://b:2"}, "httpbin.org", "/api/users", "https://b:2/users", true},
 	}
 
 	for _, tt := range tests {

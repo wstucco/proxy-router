@@ -337,22 +337,28 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 
 func applyRoute(routes map[string]string, host, path, query string) (*url.URL, error) {
 	matchKey := strings.TrimRight(host+path, "/")
-	for prefix, target := range routes {
-		prefix = strings.TrimRight(prefix, "/")
-		if strings.HasPrefix(matchKey, prefix) {
-			base, err := parseRouteTarget(target)
-			if err != nil {
-				return nil, fmt.Errorf("parse target %q: %w", target, err)
-			}
-			suffix := strings.TrimPrefix(matchKey, prefix)
-			base.Path = strings.TrimRight(base.Path, "/") + suffix
-			if query != "" {
-				base.RawQuery = query
-			}
-			return base, nil
+	var bestPrefix string
+	var bestTarget string
+	for prefix := range routes {
+		p := strings.TrimRight(prefix, "/")
+		if strings.HasPrefix(matchKey, p) && len(p) > len(bestPrefix) {
+			bestPrefix = p
+			bestTarget = routes[prefix]
 		}
 	}
-	return nil, nil
+	if bestPrefix == "" {
+		return nil, nil
+	}
+	base, err := parseRouteTarget(bestTarget)
+	if err != nil {
+		return nil, fmt.Errorf("parse target %q: %w", bestTarget, err)
+	}
+	suffix := strings.TrimPrefix(matchKey, bestPrefix)
+	base.Path = strings.TrimRight(base.Path, "/") + suffix
+	if query != "" {
+		base.RawQuery = query
+	}
+	return base, nil
 }
 
 func parseRouteTarget(target string) (*url.URL, error) {
