@@ -18,7 +18,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"unsafe"
 )
 
@@ -176,12 +175,4 @@ func negotiateRoundTrip(conn net.Conn, spn, target string, serverToken []byte) (
 	return resp.StatusCode, nil
 }
 
-func hasNegotiateScheme(headers []string) bool {
-	for _, h := range headers {
-		scheme := strings.SplitN(h, " ", 2)[0]
-		if strings.EqualFold(strings.TrimSpace(scheme), "negotiate") {
-			return true
-		}
-	}
-	return false
-}
+

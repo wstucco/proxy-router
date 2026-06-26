@@ -3,6 +3,7 @@ package proxy
 import (
 	"net"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -112,4 +113,14 @@ func ClearNegotiateCache() {
 	negCache.mu.Lock()
 	defer negCache.mu.Unlock()
 	negCache.entries = make(map[string]*negotiateCacheEntry)
+}
+
+func hasNegotiateScheme(headers []string) bool {
+	for _, h := range headers {
+		scheme := strings.SplitN(h, " ", 2)[0]
+		if strings.EqualFold(strings.TrimSpace(scheme), "negotiate") {
+			return true
+		}
+	}
+	return false
 }
