@@ -27,6 +27,7 @@ type Config struct {
 	Version   string               `toml:"version,omitempty"   json:"version,omitempty"`
 	Listen    string               `toml:"listen"              json:"listen"`
 	Proxies   map[string]string    `toml:"proxies,omitempty"   json:"proxies,omitempty"`
+	PACs      map[string]string    `toml:"pacs,omitempty"      json:"pacs,omitempty"`
 	Defaults  Defaults             `toml:"defaults"            json:"defaults"`
 	Locations map[string]*Location `toml:"locations,omitempty" json:"locations,omitempty"`
 	Log       LogConfig            `toml:"log"                 json:"log"`
@@ -183,6 +184,9 @@ func finalize(cfg *Config) (*Config, error) {
 	if cfg.Proxies == nil {
 		cfg.Proxies = map[string]string{}
 	}
+	if cfg.PACs == nil {
+		cfg.PACs = map[string]string{}
+	}
 	if cfg.Locations == nil {
 		cfg.Locations = map[string]*Location{}
 	}
@@ -210,13 +214,16 @@ func (c *Config) validate() error {
 		}
 	}
 
-	// Validate defaults.proxy
-	if p := c.Defaults.Proxy; p != "" && p != "direct" {
-		if _, ok := c.Proxies[p]; !ok {
-			if _, err := url.Parse(p); err != nil {
-				return fmt.Errorf("defaults.proxy %q is not 'direct', a known proxy name, or a valid URL", p)
-			}
+	// Validate PAC names in pacs map
+	for name, rawURL := range c.PACs {
+		if _, err := url.Parse(rawURL); err != nil {
+			return fmt.Errorf("pac %q has invalid URL: %w", name, err)
 		}
+	}
+
+	// Validate defaults — exactly one of proxy or pac
+	if err := validateProxyOrPAC("defaults", c.Defaults.Proxy, c.Defaults.PAC, c); err != nil {
+		return err
 	}
 
 	// Validate locations
@@ -224,14 +231,39 @@ func (c *Config) validate() error {
 		if len(loc.SSIDs) == 0 && len(loc.IPs) == 0 && len(loc.Domains) == 0 {
 			return fmt.Errorf("location %q has no matchers (ssids, ips, or domains required)", name)
 		}
-		if loc.Proxy == "" && loc.PAC == "" {
-			return fmt.Errorf("location %q must have a proxy or pac field", name)
+		if err := validateProxyOrPAC(name, loc.Proxy, loc.PAC, c); err != nil {
+			return fmt.Errorf("location %q: %w", name, err)
 		}
-		if loc.Proxy != "" && loc.Proxy != "direct" {
-			if _, ok := c.Proxies[loc.Proxy]; !ok {
-				if _, err := url.Parse(loc.Proxy); err != nil {
-					return fmt.Errorf("location %q proxy %q is not a known proxy name or valid URL", name, loc.Proxy)
-				}
+	}
+
+	return nil
+}
+
+// validateProxyOrPAC checks that exactly one of proxy or pac is set,
+// and that the value is valid (known name, raw URL, or "direct").
+func validateProxyOrPAC(name, proxy, pac string, cfg *Config) error {
+	hasProxy := proxy != ""
+	hasPAC := pac != ""
+
+	if !hasProxy && !hasPAC {
+		return fmt.Errorf("must have a proxy or pac field")
+	}
+	if hasProxy && hasPAC {
+		return fmt.Errorf("cannot have both proxy and pac, choose one")
+	}
+
+	if proxy != "" && proxy != "direct" {
+		if _, ok := cfg.Proxies[proxy]; !ok {
+			if _, err := url.Parse(proxy); err != nil {
+				return fmt.Errorf("proxy %q is not 'direct', a known proxy name, or a valid URL", proxy)
+			}
+		}
+	}
+
+	if pac != "" && pac != "direct" {
+		if _, ok := cfg.PACs[pac]; !ok {
+			if _, err := url.Parse(pac); err != nil {
+				return fmt.Errorf("pac %q is not 'direct', a known pac name, or a valid URL/path", pac)
 			}
 		}
 	}
@@ -249,6 +281,18 @@ func (c *Config) ResolveProxyURL(proxy string) string {
 		return u
 	}
 	return proxy // treat as raw URL
+}
+
+// ResolvePACURL returns the actual PAC URL/path for a PAC name or raw value.
+// Returns "" for "direct" or empty string.
+func (c *Config) ResolvePACURL(pac string) string {
+	if pac == "" || pac == "direct" {
+		return ""
+	}
+	if u, ok := c.PACs[pac]; ok {
+		return u
+	}
+	return pac // treat as raw URL/path
 }
 
 // EffectiveNoProxy returns the combined no_proxy list for a decision:
@@ -344,9 +388,15 @@ level = "info"
 [proxies]
 corp = "http://username:password@corp-proxy:8080"
 
+# Named PAC scripts
+# pacs = { corporate = "/etc/proxy-router/corporate.pac" }
+# Reference by name in a location: pac = "corporate"
+
 # Default behavior when no location matches
 [defaults]
 proxy = "direct"
+# or use a PAC instead:
+# pac = "corporate"
 no_proxy = []
 
 # Routes in defaults apply regardless of which location matches.
@@ -361,11 +411,11 @@ domain = "CORP"
 ssids = ["OfficeWifi", "OfficeWifi-5G"]
 ips = ["10.0.0.0/8"]
 dns = ["10.0.0.1", "10.0.0.2"]
-	no_proxy = [".internal.corp.com"]
+no_proxy = [".internal.corp.com"]
 
 # Locations can use a PAC script instead of a static proxy.
 # [locations.pac-routed]
-# pac = "/etc/proxy-router/corporate.pac"
+# pac = "corporate"
 # ssids = ["OfficeWifi"]
 `
 }

@@ -11,11 +11,20 @@ listen = "localhost:1337"
 [proxies]
 corp = "http://username:password@corp-proxy:8080"
 
+# ── Named PAC scripts ─────────────────────────────────────────────────────────
+# Optional section. Define PAC scripts here and reference them by name,
+# instead of writing file paths or URLs inline.
+# [pacs]
+# corporate = "/etc/proxy-router/corporate.pac"
+# auto = "http://proxy:8080/proxy.pac"
+
 # ── Default behavior ───────────────────────────────────────────────────────────
 # Used when no location matches the current connection.
+# Exactly one of proxy or pac must be set (the other must be absent or "direct").
 [defaults]
 # "direct" to connect directly, or a proxy name from [proxies].
 proxy = "direct"
+# To use a PAC instead: pac = "corporate" (and leave proxy unset or "direct")
 # Destinations that always bypass the proxy (merged with per-location no_proxy).
 # Supports: wildcard "*", CIDR "10.0.0.0/8", domain ".internal", exact match.
 no_proxy = []
@@ -24,12 +33,6 @@ no_proxy = []
 # Location-specific routes override same-key defaults.
 # See routes documentation below for syntax.
 [defaults.routes]
-
-# PAC script URL in [defaults] applies to all locations that don't have their own.
-# Must be a file:// path or absolute local path.
-# Can be combined with proxy (proxy is fallback) or used alone.
-# [defaults]
-# pac = "/etc/proxy-router/corporate.pac"
 
 # ── Office location ────────────────────────────────────────────────────────────
 # Matches when the current Wi-Fi SSID OR destination IP falls in one of the
@@ -111,13 +114,13 @@ domains = ["internal.corp.com", "jira.corp.com", "confluence.corp.com"]
 #   exec = "/usr/local/bin/connect-vpn"
 #
 # ── PAC-based location (example: proxy auto-config) ──────────────────────────
-# Instead of a static proxy URL, a location can reference a PAC script.
+# Instead of a static proxy URL, a location can reference a PAC script
+# (by name from [pacs], or by file path / URL).
 # The PAC script is evaluated per-request (JavaScript, FindProxyForURL).
-# When proxy and pac are both set, PAC is evaluated first; if it fails,
-# the static proxy is used as fallback.
+# Exactly one of proxy or pac must be set.
 #
 # [locations.pac-routed]
-# pac = "/etc/proxy-router/corporate.pac"
+# pac = "corporate"
 # ssids = ["OfficeWifi"]
 #
 # ── Home network example (add your own SSID) ──────────────────────────────────

@@ -60,7 +60,7 @@ func Decide(cfg *config.Config, host string) config.Decision {
 
 	// No location matched — use defaults
 	if matched == nil {
-		pacURL := cfg.Defaults.PAC
+		pacURL := cfg.ResolvePACURL(cfg.Defaults.PAC)
 		proxyURL := cfg.ResolveProxyURL(cfg.Defaults.Proxy)
 		if proxyURL == "" && pacURL == "" {
 			logEntry(host, ssid, "no location matched → default: direct", false)
@@ -105,7 +105,7 @@ func Decide(cfg *config.Config, host string) config.Decision {
 		DNS:      matched.DNS,
 		NoProxy:  noProxy,
 		Routes:   routes,
-		PAC:      matched.PAC,
+		PAC:      cfg.ResolvePACURL(matched.PAC),
 	}
 }
 

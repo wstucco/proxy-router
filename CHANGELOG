@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.0 (2026-07-05)
+
+### Changes
+
+- [Config] PAC scripts are now defined in a `[pacs]` section as `name = url/path` (like proxies), referenced by name in locations and defaults
+- [Config] Locations and defaults now require **exactly one** of `proxy` or `pac` — having both or none is a validation error
+- [Config] Both `proxy` and `pac` fields accept `"direct"` as a valid value
+- [Config] Added `ResolvePACURL()` method on Config (mirrors `ResolveProxyURL()`)
+
 ## v0.6.0 (2026-06-26)
 
 ### Enhancements

@@ -257,3 +257,142 @@ func TestLoadInvalidTOML(t *testing.T) {
 		t.Error("Load() should fail on invalid TOML")
 	}
 }
+
+// ─── PAC config ──────────────────────────────────────────────────────────────
+
+func TestLoadTOMLWithPACs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	toml := `version = "1"
+listen = "localhost:1337"
+
+[pacs]
+corporate = "/etc/proxy-router/corporate.pac"
+auto = "http://proxy:8080/proxy.pac"
+
+[defaults]
+pac = "corporate"
+
+[locations.office]
+pac = "corporate"
+ssids = ["OfficeWifi"]
+`
+	if err := os.WriteFile(path, []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if len(cfg.PACs) != 2 {
+		t.Errorf("PACs = %d entries, want 2", len(cfg.PACs))
+	}
+	if cfg.PACs["corporate"] != "/etc/proxy-router/corporate.pac" {
+		t.Errorf(`PACs["corporate"] = %q, want %q`, cfg.PACs["corporate"], "/etc/proxy-router/corporate.pac")
+	}
+	if cfg.Defaults.PAC != "corporate" {
+		t.Errorf("Defaults.PAC = %q, want %q", cfg.Defaults.PAC, "corporate")
+	}
+	if cfg.Locations["office"].PAC != "corporate" {
+		t.Errorf("location office.PAC = %q, want %q", cfg.Locations["office"].PAC, "corporate")
+	}
+}
+
+func TestResolvePACURL(t *testing.T) {
+	cfg := &Config{
+		PACs: map[string]string{
+			"corporate": "/etc/proxy-router/corporate.pac",
+		},
+	}
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"", ""},
+		{"direct", ""},
+		{"corporate", "/etc/proxy-router/corporate.pac"},
+		{"/path/to/custom.pac", "/path/to/custom.pac"},
+		{"http://example.com/proxy.pac", "http://example.com/proxy.pac"},
+	}
+
+	for _, tt := range tests {
+		got := cfg.ResolvePACURL(tt.input)
+		if got != tt.want {
+			t.Errorf("ResolvePACURL(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestLoadBothProxyAndPAC(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	toml := `version = "1"
+listen = "localhost:1337"
+
+[defaults]
+proxy = "direct"
+pac = "direct"
+
+[locations.test]
+proxy = "direct"
+pac = "direct"
+ssids = ["Test"]
+`
+	if err := os.WriteFile(path, []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Error("Load() should fail when a location has both proxy and pac")
+	}
+}
+
+func TestLoadDefaultsBothProxyAndPAC(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	toml := `version = "1"
+listen = "localhost:1337"
+
+[defaults]
+proxy = "direct"
+pac = "/path/to/pac"
+`
+	if err := os.WriteFile(path, []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Error("Load() should fail when defaults has both proxy and pac")
+	}
+}
+
+func TestLoadDefaultsPACDirect(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	toml := `version = "1"
+listen = "localhost:1337"
+
+[defaults]
+pac = "direct"
+
+[locations.test]
+proxy = "direct"
+ssids = ["Test"]
+`
+	if err := os.WriteFile(path, []byte(toml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	if cfg.Defaults.PAC != "direct" {
+		t.Errorf("Defaults.PAC = %q, want %q", cfg.Defaults.PAC, "direct")
+	}
+}
