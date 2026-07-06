@@ -34,7 +34,7 @@ func Decide(cfg *config.Config, host string) config.Decision {
 
 	// Always-no-proxy check — hardcoded, cannot be overridden
 	if isAlwaysNoProxy(host) {
-		logEntry(host, ssid, "always no-proxy → direct", false)
+		logEntry(host, ssid, "direct (always)", false)
 		return config.Decision{}
 	}
 
@@ -59,9 +59,9 @@ func Decide(cfg *config.Config, host string) config.Decision {
 	// Check no_proxy before routing
 	if config.MatchNoProxy(host, noProxy) {
 		if matched != nil {
-			logEntry(host, ssid, fmt.Sprintf("location %q matched but host in no_proxy → direct", matchedName), false)
+			logEntry(host, ssid, "direct (no_proxy)", true)
 		} else {
-			logEntry(host, ssid, "host in no_proxy → direct", false)
+			logEntry(host, ssid, "direct (no_proxy)", false)
 		}
 		return config.Decision{}
 	}
@@ -71,11 +71,11 @@ func Decide(cfg *config.Config, host string) config.Decision {
 		pacURL := cfg.ResolvePACURL(cfg.Defaults.PAC)
 		proxyURL := cfg.ResolveProxyURL(cfg.Defaults.Proxy)
 		if proxyURL == "" && pacURL == "" {
-			logEntry(host, ssid, "no location matched → default: direct", false)
+			logEntry(host, ssid, "no-location direct", false)
 		} else if proxyURL != "" {
-			logEntry(host, ssid, "no location matched → default proxy", false)
+			logEntry(host, ssid, fmt.Sprintf("no-location proxy:%s", cfg.Defaults.Proxy), false)
 		} else {
-			logEntry(host, ssid, "no location matched → default PAC", false)
+			logEntry(host, ssid, fmt.Sprintf("no-location pac:%s", cfg.Defaults.PAC), false)
 		}
 
 		fireLocationChange("", nil)
@@ -102,7 +102,7 @@ func Decide(cfg *config.Config, host string) config.Decision {
 		routes[k] = v
 	}
 
-	logEntry(host, ssid, fmt.Sprintf("location %q matched → %s", matchedName, matched.Proxy), true)
+	logEntry(host, ssid, destString(matched.Proxy, matched.PAC), true)
 
 	// Fire hook if the active location changed.
 	fireLocationChange(matchedName, matched)
@@ -174,6 +174,18 @@ func SSIDLocationInfo(cfg *config.Config, ssid string) (name, proxyOrPAC string)
 		return "", "default pac: " + cfg.Defaults.PAC
 	}
 	return "", "default: direct"
+}
+
+// destString returns a compact description of a location's destination.
+func destString(proxy, pac string) string {
+	switch {
+	case proxy != "" && proxy != "direct":
+		return "proxy:" + proxy
+	case pac != "" && pac != "direct":
+		return "pac:" + pac
+	default:
+		return "direct"
+	}
 }
 
 func isAlwaysNoProxy(host string) bool {

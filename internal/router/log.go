@@ -14,9 +14,9 @@ var dedupLog = logger.NewDedup(pkgLog)
 func logEntry(host, ssid string, action string, ruleMatched bool) {
 	var msg string
 	if ruleMatched {
-		msg = fmt.Sprintf("host=%s ssid=%q → %s", host, ssid, action)
+		msg = fmt.Sprintf("%s %s %s", host, ssid, action)
 	} else {
-		msg = fmt.Sprintf("ssid=%q → %s", ssid, action)
+		msg = fmt.Sprintf("%s %s", ssid, action)
 	}
 	dedupLog.Print("%s", msg)
 }
