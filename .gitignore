@@ -21,4 +21,4 @@ crash.log
 github-token
 config.json
 config.toml
-proxy
+/proxy

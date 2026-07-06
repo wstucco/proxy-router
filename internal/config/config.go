@@ -66,29 +66,6 @@ type Location struct {
 	Hooks   *hooks.LocationHooks `toml:"hooks,omitempty"    json:"hooks,omitempty"`
 }
 
-// MatchRoute checks if host+path matches any route prefix.
-// Routes are destination rewrites: the key is a URL prefix (host or host/path),
-// the value is the base URL to rewrite matching requests to.
-// Returns the full rewritten URL (base + unmatched suffix).
-// When multiple prefixes match, the longest (most specific) one wins.
-func (l *Location) MatchRoute(host, reqPath string) (string, bool) {
-	matchKey := strings.TrimRight(host+reqPath, "/")
-	var bestPrefix string
-	var bestTarget string
-	for prefix, target := range l.Routes {
-		prefix = strings.TrimRight(prefix, "/")
-		if strings.HasPrefix(matchKey, prefix) && len(prefix) > len(bestPrefix) {
-			bestPrefix = prefix
-			bestTarget = target
-		}
-	}
-	if bestPrefix == "" {
-		return "", false
-	}
-	suffix := strings.TrimPrefix(matchKey, bestPrefix)
-	return strings.TrimRight(bestTarget, "/") + suffix, true
-}
-
 // Decision is the result of location matching.
 type Decision struct {
 	ProxyURL     string   // resolved upstream proxy URL, "" means direct

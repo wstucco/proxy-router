@@ -1,6 +1,6 @@
 module github.com/wstucco/proxy-router
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0
@@ -21,9 +21,9 @@ require (
 	github.com/jcmturner/gofork v1.7.6 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/rapid7/go-get-proxied v0.0.0-20181210221417-16249a544090 // indirect
-	golang.org/x/crypto v0.6.0 // indirect
-	golang.org/x/net v0.7.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
 	h12.io/socks v1.0.1 // indirect
 )

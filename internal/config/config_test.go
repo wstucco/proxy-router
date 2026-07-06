@@ -6,55 +6,6 @@ import (
 	"testing"
 )
 
-func TestMatchRoute(t *testing.T) {
-	tests := []struct {
-		name   string
-		routes map[string]string
-		host   string
-		path   string
-		want   string
-		wantOK bool
-	}{
-		{"host prefix", map[string]string{"httpbin.org": "https://localhost:4321"}, "httpbin.org", "/anything", "https://localhost:4321/anything", true},
-		{"host+path prefix", map[string]string{"httpbin.org/api": "https://localhost:4321"}, "httpbin.org", "/api/users", "https://localhost:4321/users", true},
-		{"no match different host", map[string]string{"httpbin.org": "https://localhost:4321"}, "example.com", "/", "", false},
-		{"no match different path", map[string]string{"httpbin.org/api": "https://localhost:4321"}, "httpbin.org", "/other", "", false},
-		{"empty routes", map[string]string{}, "httpbin.org", "/x", "", false},
-		{"trailing slash normalization", map[string]string{"example.com/": "https://localhost:8080"}, "example.com", "/foo", "https://localhost:8080/foo", true},
-		{"root path", map[string]string{"example.com": "https://localhost:9999"}, "example.com", "/", "https://localhost:9999", true},
-		{"multiple routes longest prefix wins", map[string]string{"httpbin.org": "https://a:1", "httpbin.org/api": "https://b:2"}, "httpbin.org", "/api/users", "https://b:2/users", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			loc := &Location{Routes: tt.routes}
-			got, ok := loc.MatchRoute(tt.host, tt.path)
-			if ok != tt.wantOK {
-				t.Errorf("MatchRoute() ok = %v, want %v", ok, tt.wantOK)
-			}
-			if got != tt.want {
-				t.Errorf("MatchRoute() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestMatchRouteOrderPreservation(t *testing.T) {
-	loc := &Location{
-		Routes: map[string]string{
-			"httpbin.org": "https://localhost:4321",
-		},
-	}
-
-	got, ok := loc.MatchRoute("httpbin.org", "/anything")
-	if !ok {
-		t.Error("MatchRoute should match")
-	}
-	if got != "https://localhost:4321/anything" {
-		t.Errorf("MatchRoute = %q, want %q", got, "https://localhost:4321/anything")
-	}
-}
-
 // ─── config load / migration ──────────────────────────────────────────────────
 
 func TestLoadTOML(t *testing.T) {

@@ -30,8 +30,10 @@ var OnLocationChange func(oldName, newName string, oldLoc, newLoc *config.Locati
 // Routes from the matched location are carried in the Decision for per-request
 // destination rewriting in the proxy handler.
 func Decide(cfg *config.Config, host string) config.Decision {
-	ssid := CurrentSSID()
+	return decide(cfg, host, CurrentSSID())
+}
 
+func decide(cfg *config.Config, host, ssid string) config.Decision {
 	// Always-no-proxy check — hardcoded, cannot be overridden
 	if isAlwaysNoProxy(host) {
 		logEntry(host, ssid, "direct (always)", false)
