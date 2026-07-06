@@ -1,8 +1,8 @@
 # Changelog
 
-## v0.7.0 (2026-07-05)
+## v0.7.0 (2026-07-06)
 
-### Changes
+### Enhancements
 
 - [Config] PAC scripts are now defined in a `[pacs]` section as `name = url/path` (like proxies), referenced by name in locations and defaults
 - [Config] Locations and defaults now require **exactly one** of `proxy` or `pac` — having both or none is a validation error
@@ -17,6 +17,12 @@
 - [Log] Removed correlation IDs — one log line per request is self-contained
 - [Log] Single-line DEBUG format: `host:443 office proxy=corp`
 - [Proxy] Handler functions no longer take a `*logger.Logger` parameter — use package-level `pkgLog` directly
+- [Proxy] Add `ReadHeaderTimeout` (10s) to the listener — guards against wedged connections; CONNECT tunnels are unaffected
+- [Proxy] Proxy server is now rebuilt once on config reload instead of on every request
+- [Internal] Split `cmd/proxy/main.go` (814 lines) into `run.go`, `install.go`, `completions.go`, `help.go`
+- [Internal] Add table-driven tests for `internal/router` decision logic (SSID/IP/domain matching, no-proxy, PAC/proxy resolution)
+- [Internal] Remove dead `Location.MatchRoute` — duplicated the route matching already done in the proxy handler
+- [Deps] Bump `golang.org/x/{crypto,net,sys,text}` to current versions
 
 ### Bug fixes
 
@@ -92,7 +98,7 @@
 
 - [Routes] Revert "routed requests bypass upstream proxy" — routed requests again respect the location's upstream proxy; MITM bypass was causing routed requests to fail when the destination was only reachable through the corporate proxy
 
----
+## v0.3.1 (2026-05-19)
 
 ### Enhancements
 
