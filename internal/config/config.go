@@ -69,11 +69,13 @@ type Location struct {
 // Decision is the result of location matching.
 type Decision struct {
 	ProxyURL     string   // resolved upstream proxy URL, "" means direct
+	ProxyName    string   // proxy name from [proxies], for logging
 	Domain       string   // AD domain for NTLM
 	DNS          []string // custom DNS servers, nil means system default
 	NoProxy      []string // combined no_proxy list for this decision
 	Routes       map[string]string // routes from matched location, nil if none
 	PAC          string   // PAC script URL, evaluated per-request in proxy handler
+	PACName      string   // PAC name from [pacs], for logging
 	LocationName string   // matched location name, empty if no location matched
 }
 
@@ -85,13 +87,21 @@ func (d *Decision) RouteLoc() string {
 	return "no-location"
 }
 
-// RouteDest returns the routing destination: "proxy=<url>", "pac=<url>", or "direct".
+// RouteDest returns the routing destination: "proxy:<name>", "pac:<name>",
+// or "direct". Falls back to the redacted URL when no name is set —
+// credentials must never reach the logs.
 func (d *Decision) RouteDest() string {
 	switch {
 	case d.PAC != "":
-		return "pac=" + d.PAC
+		if d.PACName != "" {
+			return "pac:" + d.PACName
+		}
+		return "pac:" + logger.RedactURL(d.PAC)
 	case d.ProxyURL != "":
-		return "proxy=" + d.ProxyURL
+		if d.ProxyName != "" {
+			return "proxy:" + d.ProxyName
+		}
+		return "proxy:" + logger.RedactURL(d.ProxyURL)
 	default:
 		return "direct"
 	}
@@ -173,12 +183,15 @@ func migrateFromJSONData(jsonPath, tomlPath string, data []byte) (*Config, error
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
+	// Archive the original JSON so it can't re-trigger a migration later;
+	// fall back to a copy if the rename fails.
 	backupPath := jsonPath + ".bak"
-	if err := os.WriteFile(backupPath, data, 0644); err != nil {
-		pkgLog.Warn("could not write backup to %s: %v", backupPath, err)
-	} else {
-		pkgLog.Info("backup saved → %s", backupPath)
+	if err := os.Rename(jsonPath, backupPath); err != nil {
+		if werr := os.WriteFile(backupPath, data, 0644); werr != nil {
+			pkgLog.Warn("could not write backup to %s: %v", backupPath, werr)
+		}
 	}
+	pkgLog.Info("legacy config archived → %s", backupPath)
 	if err := writeTOML(tomlPath, &cfg); err != nil {
 		return nil, fmt.Errorf("writing migrated config: %w", err)
 	}

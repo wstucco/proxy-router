@@ -29,6 +29,18 @@ func cmdMigrate() {
 		os.Exit(1)
 	}
 
+	// A config.toml already in place is the source of truth: never overwrite
+	// it from a stale config.json (post_install runs migrate on every upgrade).
+	// Archive the leftover JSON so it can't re-trigger a migration.
+	if _, err := os.Stat(p.cfgFile); err == nil {
+		if err := os.Rename(jsonPath, jsonPath+".bak"); err != nil {
+			fmt.Fprintf(os.Stderr, "error: migrate: archiving legacy config: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("✓ config.toml already exists — leftover config.json archived as %s.bak\n", jsonPath)
+		return
+	}
+
 	_, err = config.MigrateIfLegacy(jsonPath, p.cfgFile, data)
 	if err != nil {
 		// Unsupported format or other non-fatal migration error — skip

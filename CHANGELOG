@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.1 (2026-07-06)
+
+### Bug fixes
+
+- [Config] **Fix `config.toml` being overwritten on every brew upgrade** — `migrate` (run by brew `post_install`) re-migrated any leftover legacy `config.json`, clobbering the current TOML config. `migrate` now never touches an existing `config.toml`, and both migration paths archive the JSON as `config.json.bak` (rename, not copy) so a migration can't re-trigger
+- [Log] **Fix proxy credentials leaked in logs** — `RouteDest()` printed the resolved upstream URL (including `user:password@`) in proxy debug/error lines; it now prints `proxy:<name>` / `pac:<name>` (consistent with router logs), falling back to a redacted URL when no name is available
+
 ## v0.7.0 (2026-07-06)
 
 ### Enhancements

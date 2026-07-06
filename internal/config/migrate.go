@@ -90,13 +90,15 @@ func MigrateIfLegacy(jsonPath, tomlPath string, data []byte) (*Config, error) {
 
 	cfg.Version = CurrentVersion
 
-	// Write backup of the original JSON
+	// Archive the original JSON so a later migrate run can't overwrite the
+	// TOML again; fall back to a copy if the rename fails.
 	backupPath := jsonPath + ".bak"
-	if err := os.WriteFile(backupPath, data, 0644); err != nil {
-		pkgLog.Warn("could not write backup to %s: %v", backupPath, err)
-	} else {
-		pkgLog.Info("backup saved → %s", backupPath)
+	if err := os.Rename(jsonPath, backupPath); err != nil {
+		if werr := os.WriteFile(backupPath, data, 0644); werr != nil {
+			pkgLog.Warn("could not write backup to %s: %v", backupPath, werr)
+		}
 	}
+	pkgLog.Info("legacy config archived → %s", backupPath)
 
 	// Write migrated config as TOML
 	if err := writeTOML(tomlPath, cfg); err != nil {

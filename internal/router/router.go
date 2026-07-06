@@ -83,10 +83,12 @@ func decide(cfg *config.Config, host, ssid string) config.Decision {
 		fireLocationChange("", nil)
 
 		return config.Decision{
-			ProxyURL: proxyURL,
-			NoProxy:  noProxy,
-			Routes:   cfg.Defaults.Routes,
-			PAC:      pacURL,
+			ProxyURL:  proxyURL,
+			ProxyName: cfg.Defaults.Proxy,
+			NoProxy:   noProxy,
+			Routes:    cfg.Defaults.Routes,
+			PAC:       pacURL,
+			PACName:   cfg.Defaults.PAC,
 		}
 	}
 
@@ -111,11 +113,13 @@ func decide(cfg *config.Config, host, ssid string) config.Decision {
 
 	return config.Decision{
 		ProxyURL:     proxyURL,
+		ProxyName:    matched.Proxy,
 		Domain:       matched.Domain,
 		DNS:          matched.DNS,
 		NoProxy:      noProxy,
 		Routes:       routes,
 		PAC:          cfg.ResolvePACURL(matched.PAC),
+		PACName:      matched.PAC,
 		LocationName: matchedName,
 	}
 }
