@@ -469,10 +469,24 @@ func ConfigDiff(old, new *Config) string {
 		}
 	}
 
+	// log
+	if old.Log.Level != new.Log.Level {
+		fmt.Fprintf(&b, "\n  log.level: %q → %q", old.Log.Level, new.Log.Level)
+	}
+	if silenceLibsDefault(old.Log.SilenceLibs) != silenceLibsDefault(new.Log.SilenceLibs) {
+		fmt.Fprintf(&b, "\n  log.silence_libs: %v → %v", silenceLibsDefault(old.Log.SilenceLibs), silenceLibsDefault(new.Log.SilenceLibs))
+	}
+
 	if b.Len() == 0 {
 		return " (no changes)"
 	}
 	return b.String()
+}
+
+// silenceLibsDefault returns true if the SilenceLibs field effectively means
+// "silence libraries" — nil (unset) or *true both mean silence.
+func silenceLibsDefault(p *bool) bool {
+	return p == nil || *p
 }
 
 // DefaultConfig returns an example config as a TOML string.

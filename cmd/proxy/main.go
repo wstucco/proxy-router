@@ -493,6 +493,19 @@ func cmdRun(args []string) {
 		if *listen != "" {
 			newCfg.Listen = *listen
 		}
+
+		// Apply log settings from the new config.
+		if newCfg.Log.Level != "" {
+			if lvl, err := pkgLog.ParseLevel(newCfg.Log.Level); err == nil {
+				pkgLog.SetLevel(lvl)
+			}
+		}
+		if newCfg.Log.SilenceLibs == nil || *newCfg.Log.SilenceLibs {
+			log.SetOutput(io.Discard)
+		} else {
+			log.SetOutput(os.Stderr)
+		}
+
 		cfgPtr.Store(newCfg)
 		router.SetConfig(newCfg)
 		proxy.ClearNegotiateCache()
