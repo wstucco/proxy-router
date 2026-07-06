@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/wstucco/proxy-router/internal/config"
 )
@@ -13,7 +14,14 @@ var (
 	activeLocationMu     sync.Mutex
 	activeLocationName   string
 	activeLocationConfig *config.Location
+	currentConfig        atomic.Pointer[config.Config]
 )
+
+// SetConfig stores the current config for use by the network listener
+// to log location details on SSID changes.
+func SetConfig(cfg *config.Config) {
+	currentConfig.Store(cfg)
+}
 
 // OnLocationChange is set by main to execute hooks when the active location changes.
 var OnLocationChange func(oldName, newName string, oldLoc, newLoc *config.Location)
@@ -100,12 +108,13 @@ func Decide(cfg *config.Config, host string) config.Decision {
 	fireLocationChange(matchedName, matched)
 
 	return config.Decision{
-		ProxyURL: proxyURL,
-		Domain:   matched.Domain,
-		DNS:      matched.DNS,
-		NoProxy:  noProxy,
-		Routes:   routes,
-		PAC:      cfg.ResolvePACURL(matched.PAC),
+		ProxyURL:     proxyURL,
+		Domain:       matched.Domain,
+		DNS:          matched.DNS,
+		NoProxy:      noProxy,
+		Routes:       routes,
+		PAC:          cfg.ResolvePACURL(matched.PAC),
+		LocationName: matchedName,
 	}
 }
 
@@ -141,6 +150,30 @@ func matchesLocation(loc *config.Location, host, ssid string) bool {
 		return false
 	}
 	return true
+}
+
+// SSIDLocationInfo returns the location name and proxy/pac description that
+// would be selected for the given SSID with a probe hostname.
+func SSIDLocationInfo(cfg *config.Config, ssid string) (name, proxyOrPAC string) {
+	for n, loc := range cfg.Locations {
+		if matchesLocation(loc, "probe.local", ssid) {
+			if loc.Proxy != "" && loc.Proxy != "direct" {
+				return n, "proxy: " + loc.Proxy
+			}
+			if loc.PAC != "" && loc.PAC != "direct" {
+				return n, "pac: " + loc.PAC
+			}
+			return n, "direct"
+		}
+	}
+	// No location matched — use defaults
+	if cfg.Defaults.Proxy != "" && cfg.Defaults.Proxy != "direct" {
+		return "", "default proxy: " + cfg.Defaults.Proxy
+	}
+	if cfg.Defaults.PAC != "" && cfg.Defaults.PAC != "direct" {
+		return "", "default pac: " + cfg.Defaults.PAC
+	}
+	return "", "default: direct"
 }
 
 func isAlwaysNoProxy(host string) bool {

@@ -35,7 +35,8 @@ type Config struct {
 
 // LogConfig controls logging behavior.
 type LogConfig struct {
-	Level string `toml:"level,omitempty" json:"level,omitempty"`
+	Level       string `toml:"level,omitempty"        json:"level,omitempty"`
+	SilenceLibs *bool  `toml:"silence_libs,omitempty" json:"silence_libs,omitempty"`
 }
 
 // Defaults defines the fallback behavior when no location matches.
@@ -90,12 +91,46 @@ func (l *Location) MatchRoute(host, reqPath string) (string, bool) {
 
 // Decision is the result of location matching.
 type Decision struct {
-	ProxyURL string   // resolved upstream proxy URL, "" means direct
-	Domain   string   // AD domain for NTLM
-	DNS      []string // custom DNS servers, nil means system default
-	NoProxy  []string // combined no_proxy list for this decision
-	Routes   map[string]string // routes from matched location, nil if none
-	PAC      string   // PAC script URL, evaluated per-request in proxy handler
+	ProxyURL     string   // resolved upstream proxy URL, "" means direct
+	Domain       string   // AD domain for NTLM
+	DNS          []string // custom DNS servers, nil means system default
+	NoProxy      []string // combined no_proxy list for this decision
+	Routes       map[string]string // routes from matched location, nil if none
+	PAC          string   // PAC script URL, evaluated per-request in proxy handler
+	LocationName string   // matched location name, empty if no location matched
+}
+
+// RouteLoc returns the location label: location name or "no-location".
+func (d *Decision) RouteLoc() string {
+	if d.LocationName != "" {
+		return d.LocationName
+	}
+	return "no-location"
+}
+
+// RouteDest returns the routing destination: "proxy=<url>", "pac=<url>", or "direct".
+func (d *Decision) RouteDest() string {
+	switch {
+	case d.PAC != "":
+		return "pac=" + d.PAC
+	case d.ProxyURL != "":
+		return "proxy=" + d.ProxyURL
+	default:
+		return "direct"
+	}
+}
+
+// RouteString returns a compact routing summary: "loc dest" or "dest" for no-location.
+func (d *Decision) RouteString() string {
+	loc := d.RouteLoc()
+	dest := d.RouteDest()
+	if loc == "no-location" && dest == "direct" {
+		return "direct"
+	}
+	if loc == "no-location" {
+		return dest
+	}
+	return loc + " " + dest
 }
 
 // Load reads and validates the config file.
@@ -376,6 +411,70 @@ func MatchDomain(host string, domains []string) bool {
 	return false
 }
 
+// ConfigDiff returns a human-readable summary of changes between two configs.
+// Returns "(no changes)" if they are identical at the compared fields.
+func ConfigDiff(old, new *Config) string {
+	if old == nil || new == nil {
+		return ""
+	}
+	var b strings.Builder
+
+	if old.Listen != new.Listen {
+		fmt.Fprintf(&b, "\n  listen: %q → %q", old.Listen, new.Listen)
+	}
+
+	// proxies
+	for k, v := range new.Proxies {
+		if oldV, ok := old.Proxies[k]; !ok {
+			fmt.Fprintf(&b, "\n  [proxies] +%s = %s", k, logger.RedactURL(v))
+		} else if oldV != v {
+			fmt.Fprintf(&b, "\n  [proxies] ~%s: %s → %s", k, logger.RedactURL(oldV), logger.RedactURL(v))
+		}
+	}
+	for k := range old.Proxies {
+		if _, ok := new.Proxies[k]; !ok {
+			fmt.Fprintf(&b, "\n  [proxies] -%s", k)
+		}
+	}
+
+	// pacs
+	for k := range new.PACs {
+		if _, ok := old.PACs[k]; !ok {
+			fmt.Fprintf(&b, "\n  [pacs] +%s", k)
+		}
+	}
+	for k := range old.PACs {
+		if _, ok := new.PACs[k]; !ok {
+			fmt.Fprintf(&b, "\n  [pacs] -%s", k)
+		}
+	}
+
+	// defaults
+	if old.Defaults.Proxy != new.Defaults.Proxy {
+		fmt.Fprintf(&b, "\n  defaults.proxy: %q → %q", old.Defaults.Proxy, new.Defaults.Proxy)
+	}
+	if old.Defaults.PAC != new.Defaults.PAC {
+		fmt.Fprintf(&b, "\n  defaults.pac: %q → %q", old.Defaults.PAC, new.Defaults.PAC)
+	}
+
+	// locations
+	for k := range new.Locations {
+		if _, ok := old.Locations[k]; !ok {
+			fmt.Fprintf(&b, "\n  [locations] +%s", k)
+		}
+	}
+	for k := range old.Locations {
+		if _, ok := new.Locations[k]; !ok {
+			fmt.Fprintf(&b, "\n  [locations] -%s", k)
+		}
+	}
+
+	if b.Len() == 0 {
+		return " (no changes)"
+	}
+	return b.String()
+}
+
 // DefaultConfig returns an example config as a TOML string.
 func DefaultConfig() string {
 	return `version = "1"
@@ -383,6 +482,7 @@ listen = "localhost:1337"
 
 [log]
 level = "info"
+# silence_libs = false  # set to true to suppress library log output (proxyplease)
 
 # Named upstream proxies
 [proxies]

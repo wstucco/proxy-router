@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -427,6 +428,8 @@ func removeCompletions() {
 
 // ─── run ──────────────────────────────────────────────────────────────────────
 
+var mainLog = pkgLog.New(pkgLog.LevelInfo, "main")
+
 func cmdRun(args []string) {
 	p := detectPaths()
 
@@ -443,7 +446,8 @@ func cmdRun(args []string) {
 
 	c, err := config.Load(*cfgFile)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		mainLog.Error("failed to load config: %v", err)
+		os.Exit(1)
 	}
 	if *listen != "" {
 		c.Listen = *listen
@@ -453,10 +457,18 @@ func cmdRun(args []string) {
 	if c.Log.Level != "" {
 		lvl, err := pkgLog.ParseLevel(c.Log.Level)
 		if err != nil {
-			log.Fatalf("invalid log level in config: %v", err)
+			mainLog.Error("invalid log level in config: %v", err)
+			os.Exit(1)
 		}
 		pkgLog.SetLevel(lvl)
 	}
+
+	// Silence library log output (proxyplease etc.) unless opted out.
+	if c.Log.SilenceLibs == nil || *c.Log.SilenceLibs {
+		log.SetOutput(io.Discard)
+	}
+
+	router.SetConfig(c)
 
 	var cfgPtr atomic.Pointer[config.Config]
 	cfgPtr.Store(c)
@@ -472,17 +484,20 @@ func cmdRun(args []string) {
 	}
 
 	reload := func() {
+		oldCfg := cfgPtr.Load()
 		newCfg, err := config.Load(*cfgFile)
 		if err != nil {
-			log.Printf("[reload] error: %v — keeping current config", err)
+			mainLog.Warn("reload error: %v — keeping current config", err)
 			return
 		}
 		if *listen != "" {
 			newCfg.Listen = *listen
 		}
 		cfgPtr.Store(newCfg)
+		router.SetConfig(newCfg)
 		proxy.ClearNegotiateCache()
-		log.Printf("[reload] config reloaded: locations=%d", len(newCfg.Locations))
+		diff := config.ConfigDiff(oldCfg, newCfg)
+		mainLog.Info("config reloaded:%s", diff)
 	}
 
 	go func() {
@@ -504,7 +519,7 @@ func cmdRun(args []string) {
 					continue
 				}
 				lastHash = hash
-				log.Printf("[reload] config file changed, reloading...")
+				mainLog.Info("config file changed, reloading...")
 				reload()
 			}
 		}
@@ -514,7 +529,7 @@ func cmdRun(args []string) {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGHUP)
 		for range ch {
-			log.Printf("[reload] SIGHUP received, reloading...")
+			mainLog.Info("SIGHUP received, reloading...")
 			reload()
 		}
 	}()
@@ -562,7 +577,8 @@ func cmdRun(args []string) {
 	// Initialize certificate manager for TLS MITM (generates CA on first run)
 	mgr, err := certmanager.NewManager(p.caCertFile, p.caKeyFile)
 	if err != nil {
-		log.Fatalf("certmanager: %v", err)
+		mainLog.Error("certmanager: %v", err)
+		os.Exit(1)
 	}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -572,9 +588,10 @@ func cmdRun(args []string) {
 		srv.ServeHTTP(w, r)
 	})
 
-	log.Printf("proxy-router listening on %s", c.Listen)
+	mainLog.Info("proxy-router listening on %s", c.Listen)
 	if err := http.ListenAndServe(c.Listen, handler); err != nil {
-		log.Fatalf("server error: %v", err)
+		mainLog.Error("server error: %v", err)
+		os.Exit(1)
 	}
 }
 

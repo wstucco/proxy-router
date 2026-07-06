@@ -2,10 +2,8 @@
 
 package router
 
-import "log"
-
 func StartNetworkListener() {
-	log.Println("[network] network listener not supported on this platform")
+	pkgLog.Info("network listener not supported on this platform")
 }
 
 func CurrentSSID() string {

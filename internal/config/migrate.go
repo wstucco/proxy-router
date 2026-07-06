@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 )
@@ -82,7 +81,7 @@ func MigrateIfLegacy(jsonPath, tomlPath string, data []byte) (*Config, error) {
 
 		// Skip locations with no matchers (would fail validation)
 		if len(loc.SSIDs) == 0 && len(loc.IPs) == 0 && len(loc.Domains) == 0 {
-			log.Printf("[migrate] skipping rule %d: no matchers", i+1)
+			pkgLog.Warn("skipping rule %d: no matchers", i+1)
 			continue
 		}
 
@@ -94,9 +93,9 @@ func MigrateIfLegacy(jsonPath, tomlPath string, data []byte) (*Config, error) {
 	// Write backup of the original JSON
 	backupPath := jsonPath + ".bak"
 	if err := os.WriteFile(backupPath, data, 0644); err != nil {
-		log.Printf("[migrate] warning: could not write backup to %s: %v", backupPath, err)
+		pkgLog.Warn("could not write backup to %s: %v", backupPath, err)
 	} else {
-		log.Printf("[migrate] backup saved → %s", backupPath)
+		pkgLog.Info("backup saved → %s", backupPath)
 	}
 
 	// Write migrated config as TOML
@@ -104,8 +103,8 @@ func MigrateIfLegacy(jsonPath, tomlPath string, data []byte) (*Config, error) {
 		return nil, fmt.Errorf("writing migrated config: %w", err)
 	}
 
-	log.Printf("[migrate] config automatically migrated to TOML → %s", tomlPath)
-	log.Printf("[migrate] see https://github.com/wstucco/proxy-router/wiki/configuration for details")
+	pkgLog.Info("config automatically migrated to TOML → %s", tomlPath)
+	pkgLog.Info("see https://github.com/wstucco/proxy-router/wiki/configuration for details")
 
 	return cfg, nil
 }

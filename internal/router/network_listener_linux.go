@@ -26,7 +26,16 @@ func StartNetworkListener() {
 				continue
 			}
 			cachedSSIDLinux.Store(ssid)
-			pkgLog.Debug("SSID changed → %q", ssid)
+			if cfg := currentConfig.Load(); cfg != nil {
+				locName, proxyPAC := SSIDLocationInfo(cfg, ssid)
+				if locName != "" {
+					pkgLog.Info("SSID changed → %q — location %q (%s)", ssid, locName, proxyPAC)
+				} else {
+					pkgLog.Info("SSID changed → %q — %s", ssid, proxyPAC)
+				}
+			} else {
+				pkgLog.Debug("SSID changed → %q", ssid)
+			}
 		}
 	}()
 }

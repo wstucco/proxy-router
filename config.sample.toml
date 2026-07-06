@@ -5,6 +5,13 @@ version = "1"
 # Address the proxy listens on. Configure your browser/OS/app to use this.
 listen = "localhost:1337"
 
+# ── Logging ─────────────────────────────────────────────────────────────────────
+[log]
+# Log level: debug, info, warn, error
+level = "info"
+# Silence library log output (proxyplease etc.). Set to false to debug proxyplease.
+silence_libs = true
+
 # ── Upstream proxies ───────────────────────────────────────────────────────────
 # Named proxy definitions. Reference them by name from locations.
 # Format: http://username:password@host:port
