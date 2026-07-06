@@ -63,6 +63,14 @@ func gokrb5NegotiateDial(proxyURL *url.URL, target string, dialer *net.Dialer) (
 
 	pkgLog.Debug("gokrb5: proxy %s requests Negotiate", proxyURL.Host)
 
+	// The proxy may close the connection after the 407. Dial a fresh
+	// connection for the Negotiate round trip.
+	conn.Close()
+	conn, err = dialer.DialContext(context.Background(), "tcp", proxyURL.Host)
+	if err != nil {
+		return nil, fmt.Errorf("reconnect to proxy %s: %w", proxyURL.Host, err)
+	}
+
 	spn := "HTTP/" + canonicalizeHostname(proxyURL.Host)
 	pkgLog.Debug("gokrb5: SPN = %s", spn)
 

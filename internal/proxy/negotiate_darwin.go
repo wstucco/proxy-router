@@ -64,6 +64,15 @@ func gssNegotiateDial(proxyURL *url.URL, target string, dialer *net.Dialer) (_ n
 
 	pkgLog.Debug("GSS: proxy %s requests Negotiate", proxyURL.Host)
 
+	// The proxy may close the connection after the 407 (e.g. Connection:
+	// close) or the first bufio.Reader may have consumed extra bytes from
+	// the socket. Use a fresh connection for the Negotiate round trip.
+	conn.Close()
+	conn, err = dialer.DialContext(context.Background(), "tcp", proxyURL.Host)
+	if err != nil {
+		return nil, fmt.Errorf("reconnect to proxy %s: %w", proxyURL.Host, err)
+	}
+
 	spn := "HTTP@" + canonicalizeHostname(proxyURL.Host)
 	pkgLog.Debug("GSS: SPN = %s", spn)
 
