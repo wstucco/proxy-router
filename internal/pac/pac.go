@@ -46,8 +46,16 @@ var (
 
 const remoteTTL = 5 * time.Minute
 
+// evalMu serializes all PAC evaluations. goja.Runtime is not safe for
+// concurrent use, and multiple callers sharing the same cached script
+// must not call FindProxyForURL simultaneously.
+var evalMu sync.Mutex
+
 // Eval evaluates a PAC script loaded from pacURL for the given request URL and host.
 func Eval(pacURL, reqURL, host string) (*Result, error) {
+	evalMu.Lock()
+	defer evalMu.Unlock()
+
 	vm, err := getRuntime(pacURL)
 	if err != nil {
 		return nil, fmt.Errorf("loading PAC script: %w", err)
@@ -114,15 +122,24 @@ func getRuntime(pacURL string) (*goja.Runtime, error) {
 		}
 	}
 
+	// Double-check under write lock to avoid duplicate creation.
+	cacheMu.Lock()
+	if entry, ok := cache[pacURL]; ok && entry.expires.After(time.Now()) {
+		cacheMu.Unlock()
+		return entry.vm, nil
+	}
+
 	vm := goja.New()
 	registerHelpers(vm)
 
 	script, modTime, err := loadScript(pacURL)
 	if err != nil {
+		cacheMu.Unlock()
 		return nil, err
 	}
 
 	if _, err := vm.RunString(script); err != nil {
+		cacheMu.Unlock()
 		return nil, fmt.Errorf("compiling PAC script: %w", err)
 	}
 
@@ -133,7 +150,6 @@ func getRuntime(pacURL string) (*goja.Runtime, error) {
 		expires = time.Now().Add(365 * 24 * time.Hour)
 	}
 
-	cacheMu.Lock()
 	cache[pacURL] = &scriptCacheEntry{
 		vm:      vm,
 		expires: expires,
