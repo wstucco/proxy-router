@@ -113,8 +113,23 @@ func cmdRun(args []string) {
 
 	router.SetConfig(c)
 
+	// Initialize certificate manager for TLS MITM (generates CA on first run)
+	mgr, err := certmanager.NewManager(p.caCertFile, p.caKeyFile)
+	if err != nil {
+		mainLog.Error("certmanager: %v", err)
+		os.Exit(1)
+	}
+
+	newProxy := func(cfg *config.Config) *proxy.Server {
+		s := proxy.New(cfg)
+		s.SetCertManager(mgr)
+		return s
+	}
+
 	var cfgPtr atomic.Pointer[config.Config]
 	cfgPtr.Store(c)
+	var srvPtr atomic.Pointer[proxy.Server]
+	srvPtr.Store(newProxy(c))
 
 	reload := func() {
 		oldCfg := cfgPtr.Load()
@@ -140,6 +155,7 @@ func cmdRun(args []string) {
 		}
 
 		cfgPtr.Store(newCfg)
+		srvPtr.Store(newProxy(newCfg))
 		router.SetConfig(newCfg)
 		proxy.ClearNegotiateCache()
 		diff := config.ConfigDiff(oldCfg, newCfg)
@@ -189,22 +205,18 @@ func cmdRun(args []string) {
 		}
 	}
 
-	// Initialize certificate manager for TLS MITM (generates CA on first run)
-	mgr, err := certmanager.NewManager(p.caCertFile, p.caKeyFile)
-	if err != nil {
-		mainLog.Error("certmanager: %v", err)
-		os.Exit(1)
+	server := &http.Server{
+		Addr: c.Listen,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srvPtr.Load().ServeHTTP(w, r)
+		}),
+		// Only guard the header read: CONNECT tunnels are long-lived, so
+		// read/write deadlines on the whole connection would break them.
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		current := cfgPtr.Load()
-		srv := proxy.New(current)
-		srv.SetCertManager(mgr)
-		srv.ServeHTTP(w, r)
-	})
-
 	mainLog.Info("proxy-router listening on %s", c.Listen)
-	if err := http.ListenAndServe(c.Listen, handler); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		mainLog.Error("server error: %v", err)
 		os.Exit(1)
 	}
