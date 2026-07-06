@@ -8,6 +8,23 @@
 - [Config] Locations and defaults now require **exactly one** of `proxy` or `pac` — having both or none is a validation error
 - [Config] Both `proxy` and `pac` fields accept `"direct"` as a valid value
 - [Config] Added `ResolvePACURL()` method on Config (mirrors `ResolveProxyURL()`)
+- [Config] Added `[log] silence_libs` option (default true) to suppress library log output (proxyplease, etc.)
+- [Config] Added `ConfigDiff()` for human-readable config reload summaries
+- [Router] SSID change logs now include location name and proxy/pac info
+- [Router] Compact log format — `api.github.com:443 wifi proxy:corp` (no `host=`/`ssid=` prefixes, no `→`)
+- [Log] Structured logs written to `stdout` instead of `stderr`
+- [Log] Level tag moved before source prefix: `[INF][proxy]` instead of `[proxy][INF]`
+- [Log] Removed correlation IDs — one log line per request is self-contained
+- [Log] Single-line DEBUG format: `host:443 office proxy=corp`
+- [Proxy] Handler functions no longer take a `*logger.Logger` parameter — use package-level `pkgLog` directly
+
+### Bug fixes
+
+- [Auth] Fix Negotiate auth failing with "unexpected EOF" after proxy 407 — the proxy was closing the connection; now opens a fresh connection for the authenticated CONNECT request
+- [Auth] Skip NTLM/Basic fallback when Negotiate fails and no credentials are configured (e.g. PAC-only mode)
+- [PAC] Fix concurrent map writes crash in goja runtime — global mutex serializes all FindProxyForURL calls (goja.Runtime is not thread-safe)
+- [Router] Fix empty destination in location-matched log when location uses PAC — now shows "proxy:<name>", "pac:<name>", or "direct"
+- [Config] Fix `[log] level` and `[log] silence_libs` not being applied on reload — ConfigDiff didn't track log changes, and the reload function never re-applied them from the new config
 
 ## v0.6.0 (2026-06-26)
 
