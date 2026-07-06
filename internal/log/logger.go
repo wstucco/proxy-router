@@ -8,7 +8,7 @@
 //
 //	var log = logger.New(log.Info, "proxy")
 //	log.Info("started on %s", addr)
-//	log.WithCorrelation("abc123").Debug("CONNECT %s", host)
+//	log.Debug("CONNECT %s", host)
 package log
 
 import (
@@ -79,11 +79,10 @@ func GetLevel() Level {
 // Create one via New() for each package.
 // Thread-safe.
 type Logger struct {
-	level       Level
-	prefix      string
-	out         io.Writer
-	correlation string // optional, set via WithCorrelation
-	logger      *log.Logger
+	level  Level
+	prefix string
+	out    io.Writer
+	logger *log.Logger
 }
 
 // New creates a new Logger with the given minimum level and prefix.
@@ -92,8 +91,8 @@ func New(level Level, prefix string) *Logger {
 	return &Logger{
 		level:  level,
 		prefix: prefix,
-		out:    os.Stderr,
-		logger: log.New(os.Stderr, "", log.LstdFlags),
+		out:    os.Stdout,
+		logger: log.New(os.Stdout, "", log.LstdFlags),
 	}
 }
 
@@ -101,20 +100,6 @@ func New(level Level, prefix string) *Logger {
 func (l *Logger) SetOutput(w io.Writer) {
 	l.out = w
 	l.logger = log.New(w, "", log.LstdFlags)
-}
-
-// WithCorrelation returns a copy of the logger with a correlation ID.
-// Use this for tracing a single request across multiple log lines.
-//
-//	l.WithCorrelation("abc123").Info("CONNECT %s", host)
-func (l *Logger) WithCorrelation(id string) *Logger {
-	return &Logger{
-		level:       l.level,
-		prefix:      l.prefix,
-		out:         l.out,
-		correlation: id,
-		logger:      l.logger,
-	}
 }
 
 // Enabled reports whether messages at the given level will be emitted.
@@ -165,10 +150,6 @@ func (l *Logger) output(lvl Level, format string, args ...any) {
 	}
 
 	levelTag := levelNames[lvl]
-	corr := ""
-	if l.correlation != "" {
-		corr = " req=" + l.correlation
-	}
 
-	l.logger.Printf("[%s]%s[%s] %s", l.prefix, corr, levelTag, msg)
+	l.logger.Printf("[%s][%s] %s", levelTag, l.prefix, msg)
 }

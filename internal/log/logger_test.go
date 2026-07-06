@@ -70,29 +70,6 @@ func TestLoggerPrefix(t *testing.T) {
 	}
 }
 
-func TestLoggerCorrelationID(t *testing.T) {
-	var buf bytes.Buffer
-	l := New(LevelInfo, "proxy")
-	l.SetOutput(&buf)
-
-	l.WithCorrelation("abc123").Info("CONNECT %s", "example.com")
-
-	got := buf.String()
-	if !strings.Contains(got, "req=abc123") || !strings.Contains(got, "CONNECT example.com") {
-		t.Errorf("expected correlation ID and message, got: %s", got)
-	}
-	if !strings.Contains(got, "[proxy]") {
-		t.Errorf("expected prefix [proxy], got: %s", got)
-	}
-
-	// Subsequent call without correlation should not have one
-	buf.Reset()
-	l.Info("plain message")
-	if strings.Contains(buf.String(), "req=") {
-		t.Errorf("plain message should not have correlation ID, got: %s", buf.String())
-	}
-}
-
 func TestLoggerMultipleArgs(t *testing.T) {
 	var buf bytes.Buffer
 	l := New(LevelInfo, "test")
