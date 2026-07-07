@@ -79,12 +79,13 @@ type Decision struct {
 	LocationName string   // matched location name, empty if no location matched
 }
 
-// RouteLoc returns the location label: location name or "no-location".
+// RouteLoc returns the location label: the matched location name, or
+// "default" when no location matched (the [defaults] section applies).
 func (d *Decision) RouteLoc() string {
 	if d.LocationName != "" {
 		return d.LocationName
 	}
-	return "no-location"
+	return "default"
 }
 
 // RouteDest returns the routing destination: "proxy:<name>", "pac:<name>",
@@ -107,14 +108,15 @@ func (d *Decision) RouteDest() string {
 	}
 }
 
-// RouteString returns a compact routing summary: "loc dest" or "dest" for no-location.
+// RouteString returns a compact routing summary: "loc dest", collapsed to
+// just "dest" when no location matched.
 func (d *Decision) RouteString() string {
 	loc := d.RouteLoc()
 	dest := d.RouteDest()
-	if loc == "no-location" && dest == "direct" {
+	if loc == "default" && dest == "direct" {
 		return "direct"
 	}
-	if loc == "no-location" {
+	if loc == "default" {
 		return dest
 	}
 	return loc + " " + dest

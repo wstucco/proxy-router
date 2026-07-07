@@ -59,7 +59,7 @@ func TestPad(t *testing.T) {
 
 func TestRenderTable(t *testing.T) {
 	conns := []proxy.ConnInfo{
-		{ID: 1, Active: false, Process: "curl", PID: 42, Dest: "closed.example.com:80", Location: "no-location", Via: "direct", DurationMS: 100},
+		{ID: 1, Active: false, Process: "curl", PID: 42, Dest: "closed.example.com:80", Location: "default", Via: "direct", DurationMS: 100},
 		{ID: 2, Active: true, Process: "Safari", PID: 7, Dest: "example.com:443", Location: "office", Via: "proxy:corp", BytesUp: 1024, BytesDown: 2 << 20, DurationMS: 65000},
 	}
 

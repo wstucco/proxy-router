@@ -73,11 +73,11 @@ func decide(cfg *config.Config, host, ssid string) config.Decision {
 		pacURL := cfg.ResolvePACURL(cfg.Defaults.PAC)
 		proxyURL := cfg.ResolveProxyURL(cfg.Defaults.Proxy)
 		if proxyURL == "" && pacURL == "" {
-			logEntry(host, ssid, "no-location direct", false)
+			logEntry(host, ssid, "default direct", false)
 		} else if proxyURL != "" {
-			logEntry(host, ssid, fmt.Sprintf("no-location proxy:%s", cfg.Defaults.Proxy), false)
+			logEntry(host, ssid, fmt.Sprintf("default proxy:%s", cfg.Defaults.Proxy), false)
 		} else {
-			logEntry(host, ssid, fmt.Sprintf("no-location pac:%s", cfg.Defaults.PAC), false)
+			logEntry(host, ssid, fmt.Sprintf("default pac:%s", cfg.Defaults.PAC), false)
 		}
 
 		fireLocationChange("", nil)
