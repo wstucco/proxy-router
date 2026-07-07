@@ -112,6 +112,7 @@ _proxy_router() {
   local -a commands
   commands=(
     'run:Start the proxy'
+    'connections:Live view of connections through the proxy'
     'install:Install config, completions, and systemd/LaunchAgent service'
     'install-certs:Generate and install CA certificate for TLS MITM'
     'uninstall:Stop and remove LaunchAgent and completions'
@@ -127,6 +128,14 @@ _proxy_router() {
     '-gen-config[Print example config.toml and exit]'
   )
 
+  local -a connections_flags
+  connections_flags=(
+    '-config[Path to config file]:file:_files'
+    '-listen[Daemon address (overrides config)]:address'
+    '-interval[Refresh interval (default 1s)]:duration'
+    '-once[Print one snapshot and exit]'
+  )
+
   local -a uninstall_flags
   uninstall_flags=('--prune[Also delete the config directory]')
 
@@ -139,9 +148,10 @@ _proxy_router() {
   fi
 
   case ${words[2]} in
-    run)        _arguments $run_flags ;;
-    uninstall)  _arguments $uninstall_flags ;;
-    completion) _describe 'shell' shells ;;
+    run)         _arguments $run_flags ;;
+    connections) _arguments $connections_flags ;;
+    uninstall)   _arguments $uninstall_flags ;;
+    completion)  _describe 'shell' shells ;;
   esac
 }
 
@@ -152,7 +162,7 @@ const bashCompletion = `_proxy_router() {
   local cur prev
   _init_completion || return
 
-  local commands="run install install-certs uninstall completion version help"
+  local commands="run connections install install-certs uninstall completion version help"
 
   case "$prev" in
     proxy-router) COMPREPLY=($(compgen -W "$commands" -- "$cur")); return ;;
@@ -161,6 +171,7 @@ const bashCompletion = `_proxy_router() {
     completion)   COMPREPLY=($(compgen -W "zsh bash fish" -- "$cur")); return ;;
     uninstall)    COMPREPLY=($(compgen -W "--prune" -- "$cur")); return ;;
     run)          COMPREPLY=($(compgen -W "-config -listen -gen-config" -- "$cur")); return ;;
+    connections)  COMPREPLY=($(compgen -W "-config -listen -interval -once" -- "$cur")); return ;;
   esac
 
   COMPREPLY=($(compgen -W "$commands" -- "$cur"))
@@ -174,6 +185,7 @@ const fishCompletion = `# proxy-router fish completion
 complete -c proxy-router -f
 
 complete -c proxy-router -n "__fish_use_subcommand" -a run          -d "Start the proxy"
+complete -c proxy-router -n "__fish_use_subcommand" -a connections  -d "Live view of connections through the proxy"
 complete -c proxy-router -n "__fish_use_subcommand" -a install      -d "Install config, completions, and service (LaunchAgent/systemd)"
 complete -c proxy-router -n "__fish_use_subcommand" -a install-certs -d "Generate and install CA certificate for TLS MITM"
 complete -c proxy-router -n "__fish_use_subcommand" -a uninstall    -d "Stop and remove LaunchAgent and completions"
@@ -184,6 +196,11 @@ complete -c proxy-router -n "__fish_use_subcommand" -a help         -d "Show hel
 complete -c proxy-router -n "__fish_seen_subcommand_from run" -l config     -d "Path to config file" -r -F
 complete -c proxy-router -n "__fish_seen_subcommand_from run" -l listen     -d "Override listen address" -r
 complete -c proxy-router -n "__fish_seen_subcommand_from run" -l gen-config -d "Print example config.toml and exit"
+
+complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l config   -d "Path to config file" -r -F
+complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l listen   -d "Daemon address (overrides config)" -r
+complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l interval -d "Refresh interval (default 1s)" -r
+complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l once     -d "Print one snapshot and exit"
 
 complete -c proxy-router -n "__fish_seen_subcommand_from uninstall" -l prune -d "Also delete the config directory"
 

@@ -42,9 +42,15 @@ func (s *Server) SetCertManager(mgr interface {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodConnect {
 		s.handleCONNECT(w, r)
-	} else {
-		s.handleHTTP(w, r)
+		return
 	}
+	// Proxied HTTP requests carry an absolute URI; a relative one means a
+	// direct hit on the listen port (control endpoint, not proxy traffic).
+	if !r.URL.IsAbs() {
+		s.handleControl(w, r)
+		return
+	}
+	s.handleHTTP(w, r)
 }
 
 func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
@@ -111,9 +117,12 @@ func (s *Server) handleCONNECT(w http.ResponseWriter, r *http.Request) {
 	_, _ = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 	pkgLog.Debug("%s %s", r.Host, decision.RouteString())
 
+	e := trackConn(kindConnect, r.RemoteAddr, r.Host, decision.RouteLoc(), decision.RouteDest())
+	defer e.Close()
+
 	done := make(chan struct{}, 2)
-	go func() { io.Copy(targetConn, clientConn); done <- struct{}{} }()
-	go func() { io.Copy(clientConn, targetConn); done <- struct{}{} }()
+	go func() { io.Copy(targetConn, countReader{clientConn, &e.bytesUp}); done <- struct{}{} }()
+	go func() { io.Copy(clientConn, countReader{targetConn, &e.bytesDown}); done <- struct{}{} }()
 	<-done
 }
 
@@ -124,6 +133,15 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	pacURL := r.URL.String()
 	if err := applyPAC(&decision, pacURL, r.Host); err != nil {
 		pkgLog.Warn("PAC eval failed for HTTP %s: %v — using static config", r.Host, err)
+	}
+
+	e := trackConn(kindHTTP, r.RemoteAddr, r.Host, decision.RouteLoc(), decision.RouteDest())
+	defer e.Close()
+	if r.Body != nil {
+		r.Body = struct {
+			io.Reader
+			io.Closer
+		}{countReader{r.Body, &e.bytesUp}, r.Body}
 	}
 
 	dialer := makeDialer(decision.DNS)
@@ -140,6 +158,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		pkgLog.Info("HTTP %s %s route → %s", r.Method, r.Host+requestPath(r), targetURL.String())
 		r.URL = targetURL
 		r.Host = targetURL.Host
+		e.SetDest(r.Host)
 	}
 
 	var transport http.RoundTripper
@@ -184,7 +203,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	io.Copy(w, countReader{resp.Body, &e.bytesDown})
 }
 
 func (s *Server) handleMITM(w http.ResponseWriter, r *http.Request, decision *config.Decision) {
@@ -219,10 +238,17 @@ func (s *Server) handleMITM(w http.ResponseWriter, r *http.Request, decision *co
 	defer clientTLS.Close()
 
 	pkgLog.Info("MITM %s tunnel open (routes: %d)", r.Host, len(decision.Routes))
-	s.mitmProxy(clientTLS, hostname, decision)
+
+	// One entry per client TLS tunnel; dest is updated per decrypted request.
+	// The via string stays tunnel-level even if per-request PAC differs —
+	// documented simplification.
+	e := trackConn(kindMITM, r.RemoteAddr, r.Host, decision.RouteLoc(), decision.RouteDest())
+	defer e.Close()
+
+	s.mitmProxy(clientTLS, hostname, decision, e)
 }
 
-func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *config.Decision) {
+func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *config.Decision, e *ConnEntry) {
 	dialer := makeDialer(decision.DNS)
 	for {
 		req, err := http.ReadRequest(bufio.NewReader(clientTLS))
@@ -262,6 +288,7 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 		if routed {
 			pkgLog.Info("MITM %s route → %s", req.URL.String(), targetHost)
 		}
+		e.SetDest(targetHost)
 
 		pkgLog.Debug("MITM %s %s", req.Method, req.URL.String())
 
@@ -298,7 +325,7 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 		req.Header.Del("Proxy-Authenticate")
 		req.Header.Del("Proxy-Authorization")
 
-		if err := req.Write(targetTLS); err != nil {
+		if err := req.Write(countWriter{targetTLS, &e.bytesUp}); err != nil {
 			targetTLS.Close()
 			pkgLog.Error("MITM: write request to %s failed: %v", targetHost, err)
 			break
@@ -311,7 +338,7 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 			break
 		}
 
-		if err := resp.Write(clientTLS); err != nil {
+		if err := resp.Write(countWriter{clientTLS, &e.bytesDown}); err != nil {
 			resp.Body.Close()
 			pkgLog.Error("MITM: write response to client failed: %v", err)
 			break

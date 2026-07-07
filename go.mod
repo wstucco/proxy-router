@@ -7,6 +7,7 @@ require (
 	github.com/aus/proxyplease v0.1.0
 	github.com/dop251/goja v0.0.0-20260607120635-348e6bea910d
 	github.com/jcmturner/gokrb5/v8 v8.4.4
+	golang.org/x/term v0.44.0
 )
 
 require (

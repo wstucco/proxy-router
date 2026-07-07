@@ -11,6 +11,7 @@ USAGE:
 
 COMMANDS:
   run             Start the proxy
+  connections     Live view of connections through the proxy (q to quit)
   install         Write default config, install completions, register service (LaunchAgent/systemd)
   install-certs   Generate and show how to install CA certificate for TLS MITM
   uninstall       Deregister service, remove completions (config kept by default)
@@ -25,6 +26,12 @@ RUN FLAGS:
   -listen <addr>    Override listen address (e.g. localhost:33000)
   -gen-config       Print an example config.toml and exit
 
+CONNECTIONS FLAGS:
+  -config <path>    Path to config file (to find the daemon's listen address)
+  -listen <addr>    Daemon address (overrides config)
+  -interval <dur>   Refresh interval (default 1s)
+  -once             Print one snapshot and exit (no TUI, scripting-friendly)
+
 UNINSTALL FLAGS:
   --prune           Also delete the config directory
 
@@ -37,6 +44,8 @@ EXAMPLES:
   proxy-router install
   proxy-router install-certs
   proxy-router run -listen localhost:33000 -config ~/myconf.toml
+  proxy-router connections
+  proxy-router connections -once
   proxy-router uninstall --prune
   proxy-router completion zsh > ~/.zsh/completions/_proxy-router
 

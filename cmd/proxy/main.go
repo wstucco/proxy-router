@@ -70,6 +70,8 @@ func main() {
 		cmdUninstall(prune)
 	case "run":
 		cmdRun(os.Args[2:])
+	case "connections":
+		cmdConnections(os.Args[2:])
 	case "completion":
 		cmdCompletion(os.Args[2:])
 	case "version", "-v", "--version":

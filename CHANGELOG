@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.8.0 (unreleased)
+
+### Enhancements
+
+- [CLI] **New `connections` command** — live terminal view of connections through the proxy (mini Little Snitch): client process → destination, location, upstream, bytes up/down, age; recently closed connections shown dimmed; `q` to quit, `-once` for a plain-text snapshot, `-interval` to tune refresh
+- [Proxy] Connection tracking registry — CONNECT tunnels, plain HTTP requests, and MITM sessions are tracked with live byte counters; survives config reloads
+- [Proxy] Control endpoint `GET /_pr/connections` on the listen port (loopback only) — returns active and recent connections as JSON; direct (non-proxied) requests to the listen port no longer get self-proxied
+- [macOS] Client process attribution via libproc (`proc_listpids`/`proc_pidfdinfo`) — resolves which process opened each connection, no privileges needed for same-user processes
+- [Deps] Add `golang.org/x/term` (raw mode for the connections TUI)
+
 ## v0.7.1 (2026-07-06)
 
 ### Bug fixes
