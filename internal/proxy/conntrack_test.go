@@ -7,19 +7,21 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func resetConnReg() {
 	connReg.Lock()
 	connReg.active = make(map[uint64]*ConnEntry)
 	connReg.recent = nil
+	connReg.subs = make(map[uint64]chan ConnEvent)
 	connReg.Unlock()
 }
 
 func TestTrackCloseSnapshot(t *testing.T) {
 	resetConnReg()
 
-	e := trackConn(kindConnect, "127.0.0.1:55555", "example.com:443", "office", "proxy:corp")
+	e := trackConn(kindConnect, "nohost", "example.com:443", "office", "proxy:corp")
 	e.bytesUp.Add(100)
 	e.bytesDown.Add(2000)
 
@@ -52,7 +54,7 @@ func TestTrackCloseSnapshot(t *testing.T) {
 
 func TestSetDest(t *testing.T) {
 	resetConnReg()
-	e := trackConn(kindMITM, "127.0.0.1:1", "orig.example.com:443", "office", "direct")
+	e := trackConn(kindMITM, "nohost", "orig.example.com:443", "office", "direct")
 	defer e.Close()
 	e.SetDest("routed.example.com:443")
 	if got := SnapshotConnections()[0].Dest; got != "routed.example.com:443" {
@@ -63,7 +65,7 @@ func TestSetDest(t *testing.T) {
 func TestRecentRingCap(t *testing.T) {
 	resetConnReg()
 	for i := 0; i < recentCap+10; i++ {
-		e := trackConn(kindHTTP, "127.0.0.1:1", fmt.Sprintf("host%d:80", i), "", "direct")
+		e := trackConn(kindHTTP, "nohost", fmt.Sprintf("host%d:80", i), "", "direct")
 		e.Close()
 	}
 	snap := SnapshotConnections()
@@ -78,9 +80,9 @@ func TestRecentRingCap(t *testing.T) {
 
 func TestSnapshotActiveBeforeRecent(t *testing.T) {
 	resetConnReg()
-	closed := trackConn(kindHTTP, "127.0.0.1:1", "closed:80", "", "direct")
+	closed := trackConn(kindHTTP, "nohost", "closed:80", "", "direct")
 	closed.Close()
-	open := trackConn(kindConnect, "127.0.0.1:2", "open:443", "", "direct")
+	open := trackConn(kindConnect, "nohost", "open:443", "", "direct")
 	defer open.Close()
 
 	snap := SnapshotConnections()
@@ -91,7 +93,7 @@ func TestSnapshotActiveBeforeRecent(t *testing.T) {
 
 func TestCountReaderWriter(t *testing.T) {
 	resetConnReg()
-	e := trackConn(kindConnect, "127.0.0.1:1", "x:443", "", "direct")
+	e := trackConn(kindConnect, "nohost", "x:443", "", "direct")
 	defer e.Close()
 
 	src := strings.NewReader(strings.Repeat("a", 1234))
@@ -105,6 +107,76 @@ func TestCountReaderWriter(t *testing.T) {
 	}
 }
 
+// Test client addresses use an unparseable host:port ("nohost") so trackConn
+// skips the async PID-resolution goroutine and no "proc" event interleaves.
+func TestSubscribeEvents(t *testing.T) {
+	resetConnReg()
+	id, ch := subscribeConns()
+	defer unsubscribeConns(id)
+
+	e := trackConn(kindMITM, "nohost", "orig.example.com:443", "office", "proxy:corp")
+	e.SetDest("routed.example.com:443")
+	e.SetDest("routed.example.com:443") // no change → no event
+	e.Close()
+
+	want := []struct{ typ, dest string }{
+		{"open", "orig.example.com:443"},
+		{"dest", "routed.example.com:443"},
+		{"close", "routed.example.com:443"},
+	}
+	for _, w := range want {
+		select {
+		case ev := <-ch:
+			if ev.Type != w.typ || ev.Conn.Dest != w.dest {
+				t.Errorf("got %s/%s, want %s/%s", ev.Type, ev.Conn.Dest, w.typ, w.dest)
+			}
+			if w.typ == "close" && ev.Conn.Active {
+				t.Error("close event marked active")
+			}
+		default:
+			t.Fatalf("missing %s event", w.typ)
+		}
+	}
+	select {
+	case ev := <-ch:
+		t.Errorf("unexpected extra event: %+v", ev)
+	default:
+	}
+}
+
+func TestSlowSubscriberDoesNotBlock(t *testing.T) {
+	resetConnReg()
+	id, ch := subscribeConns()
+	defer unsubscribeConns(id)
+
+	// Overflow the buffer without draining: emitters must never block.
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 300; i++ {
+			trackConn(kindHTTP, "nohost", "h:80", "", "direct").Close()
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("emitters blocked on a slow subscriber")
+	}
+	if len(ch) != cap(ch) {
+		t.Errorf("expected full buffer (%d), got %d", cap(ch), len(ch))
+	}
+}
+
+func TestUnsubscribeStopsDelivery(t *testing.T) {
+	resetConnReg()
+	id, ch := subscribeConns()
+	unsubscribeConns(id)
+	trackConn(kindHTTP, "nohost", "h:80", "", "direct").Close()
+	if len(ch) != 0 {
+		t.Errorf("received %d events after unsubscribe", len(ch))
+	}
+}
+
 func TestConcurrentTrackCloseSnapshot(t *testing.T) {
 	resetConnReg()
 	var wg sync.WaitGroup
@@ -112,7 +184,7 @@ func TestConcurrentTrackCloseSnapshot(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			e := trackConn(kindHTTP, "127.0.0.1:1", fmt.Sprintf("h%d:80", i), "", "direct")
+			e := trackConn(kindHTTP, "nohost", fmt.Sprintf("h%d:80", i), "", "direct")
 			e.bytesUp.Add(1)
 			SnapshotConnections()
 			e.Close()

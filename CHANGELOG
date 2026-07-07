@@ -9,6 +9,7 @@
 - [Proxy] Control endpoint `GET /_pr/connections` on the listen port (loopback only) — returns active and recent connections as JSON; direct (non-proxied) requests to the listen port no longer get self-proxied
 - [macOS] Client process attribution via libproc (`proc_listpids`/`proc_pidfdinfo`) — resolves which process opened each connection, no privileges needed for same-user processes
 - [Deps] Add `golang.org/x/term` (raw mode for the connections TUI)
+- [Proxy] **SSE stream `GET /_pr/events`** — push events instead of polling: initial `snapshot`, then `open`/`close`/`dest`/`proc` per connection plus a periodic `stats` event with live byte counters; slow consumers lose events but the stats tick is authoritative on the active set and self-heals. Try it: `curl -N localhost:1337/_pr/events`
 
 ## v0.7.1 (2026-07-06)
 

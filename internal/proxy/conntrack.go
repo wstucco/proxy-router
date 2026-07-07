@@ -58,6 +58,14 @@ type ConnInfo struct {
 	BytesDown  int64     `json:"bytes_down"`
 }
 
+// ConnEvent is a registry change notification pushed to SSE subscribers.
+// Type is "open", "close", or "dest"; Conn is the entry state at emit time
+// (for "close" it carries the final byte counts and duration).
+type ConnEvent struct {
+	Type string   `json:"type"`
+	Conn ConnInfo `json:"conn"`
+}
+
 // connRegistry is package-level: the Server is rebuilt and swapped on every
 // config reload, but live connections outlast the swap (same pattern as the
 // negotiate failure cache). Never cleared on reload.
@@ -66,8 +74,45 @@ var connReg = struct {
 	nextID uint64
 	active map[uint64]*ConnEntry
 	recent []*ConnEntry // ring buffer of recently closed entries
+	subID  uint64
+	subs   map[uint64]chan ConnEvent
 }{
 	active: make(map[uint64]*ConnEntry),
+	subs:   make(map[uint64]chan ConnEvent),
+}
+
+// subscribeConns registers an event subscriber. The channel is buffered; a
+// slow consumer loses events rather than blocking the data path — the
+// periodic SSE stats event is authoritative on the active set, so lost
+// events self-heal on the client.
+func subscribeConns() (uint64, <-chan ConnEvent) {
+	ch := make(chan ConnEvent, 128)
+	connReg.Lock()
+	connReg.subID++
+	id := connReg.subID
+	connReg.subs[id] = ch
+	connReg.Unlock()
+	return id, ch
+}
+
+func unsubscribeConns(id uint64) {
+	connReg.Lock()
+	delete(connReg.subs, id)
+	connReg.Unlock()
+}
+
+// emitConnEvent fans out to subscribers. Callers must NOT hold connReg or
+// e.mu is fine — snapshot() takes e.mu itself.
+func emitConnEvent(typ string, e *ConnEntry) {
+	ev := ConnEvent{Type: typ, Conn: e.snapshot()}
+	connReg.Lock()
+	for _, ch := range connReg.subs {
+		select {
+		case ch <- ev:
+		default: // slow consumer: drop, stats will resync it
+		}
+	}
+	connReg.Unlock()
 }
 
 // trackConn registers a new connection and resolves the owning client
@@ -88,18 +133,22 @@ func trackConn(kind, clientAddr, dest, location, via string) *ConnEntry {
 	connReg.active[e.id] = e
 	connReg.Unlock()
 
+	emitConnEvent("open", e)
+
 	if _, port, err := net.SplitHostPort(clientAddr); err == nil {
 		if p, err := strconv.ParseUint(port, 10, 16); err == nil {
 			go func() {
 				res, err := procinfo.Lookup(uint16(p))
 				e.mu.Lock()
-				defer e.mu.Unlock()
 				if err != nil {
 					e.process = "?"
-					return
+				} else {
+					e.pid = res.PID
+					e.process = res.Name
 				}
-				e.pid = res.PID
-				e.process = res.Name
+				e.mu.Unlock()
+				// The "open" event predates resolution — push the name.
+				emitConnEvent("proc", e)
 			}()
 		}
 	}
@@ -124,13 +173,20 @@ func (e *ConnEntry) Close() {
 		connReg.recent = connReg.recent[len(connReg.recent)-recentCap:]
 	}
 	connReg.Unlock()
+
+	emitConnEvent("close", e)
 }
 
 // SetDest updates the destination (MITM tunnels carry per-request targets).
+// Emits only on an actual change — MITM calls this on every request.
 func (e *ConnEntry) SetDest(dest string) {
 	e.mu.Lock()
+	changed := e.dest != dest
 	e.dest = dest
 	e.mu.Unlock()
+	if changed {
+		emitConnEvent("dest", e)
+	}
 }
 
 func (e *ConnEntry) snapshot() ConnInfo {
