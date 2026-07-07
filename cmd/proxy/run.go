@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -126,12 +128,17 @@ func cmdRun(args []string) {
 		return s
 	}
 
-	var cfgPtr atomic.Pointer[config.Config]
+	var (
+		cfgPtr  atomic.Pointer[config.Config]
+		srvPtr  atomic.Pointer[proxy.Server]
+		reloadMu sync.Mutex
+	)
 	cfgPtr.Store(c)
-	var srvPtr atomic.Pointer[proxy.Server]
 	srvPtr.Store(newProxy(c))
 
 	reload := func() {
+		reloadMu.Lock()
+		defer reloadMu.Unlock()
 		oldCfg := cfgPtr.Load()
 		newCfg, err := config.Load(*cfgFile)
 		if err != nil {
@@ -216,8 +223,27 @@ func cmdRun(args []string) {
 	}
 
 	mainLog.Info("proxy-router listening on %s", c.Listen)
-	if err := server.ListenAndServe(); err != nil {
+
+	// Graceful shutdown on SIGINT/SIGTERM.
+	shutdown := make(chan struct{})
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		<-sig
+		mainLog.Info("shutting down gracefully...")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			mainLog.Error("shutdown error: %v", err)
+		}
+		close(shutdown)
+	}()
+
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		mainLog.Error("server error: %v", err)
 		os.Exit(1)
 	}
+
+	<-shutdown
+	mainLog.Info("proxy-router stopped")
 }
