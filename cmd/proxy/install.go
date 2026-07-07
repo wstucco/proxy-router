@@ -34,11 +34,23 @@ type paths struct {
 	svcFile    string // only set for Linux (systemd)
 }
 
-func detectPaths() paths {
-	self, _ := os.Executable()
-	self, _ = filepath.EvalSymlinks(self)
-
-	var p paths
+func detectPaths() (p paths) {
+	self, err := os.Executable()
+	if err == nil {
+		self, err = filepath.EvalSymlinks(self)
+	}
+	if err != nil {
+		// Can't detect the binary path — assume manual install on the default prefix.
+		p.mode = modeManual
+		p.prefix = "/usr/local"
+		p.bin = filepath.Join(p.prefix, "bin", binaryName)
+		p.cfgDir = filepath.Join(p.prefix, "etc", "proxy-router")
+		p.logDir = filepath.Join(p.prefix, "var", "log", "proxy-router")
+		p.cfgFile = filepath.Join(p.cfgDir, "config.toml")
+		p.caCertFile = filepath.Join(p.cfgDir, "cacert.pem")
+		p.caKeyFile = filepath.Join(p.cfgDir, "cakey.pem")
+		return p
+	}
 
 	if strings.HasPrefix(self, "/opt/homebrew") || strings.HasPrefix(self, "/usr/local/Cellar") || strings.HasPrefix(self, "/usr/local/opt") {
 		p.mode = modeBrew
@@ -59,7 +71,10 @@ func detectPaths() paths {
 		if runtime.GOOS == "darwin" {
 			p.plist = filepath.Join("/Library", "LaunchAgents", plistFile)
 		} else {
-			home, _ := os.UserHomeDir()
+			home, err := os.UserHomeDir()
+			if err != nil {
+				home = "/root"
+			}
 			p.svcFile = filepath.Join(home, ".config", "systemd", "user", binaryName+".service")
 		}
 	}

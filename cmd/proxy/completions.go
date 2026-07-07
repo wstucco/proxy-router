@@ -17,7 +17,10 @@ type shellCompletion struct {
 }
 
 func completionDefs() []shellCompletion {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "/root"
+	}
 	return []shellCompletion{
 		{
 			name:    "zsh",

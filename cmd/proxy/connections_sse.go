@@ -23,6 +23,11 @@ type connEvent struct {
 
 // sendCtx sends ev to ch, aborting and returning false if ctx is cancelled.
 func sendCtx(ctx context.Context, ch chan<- connEvent, ev connEvent) bool {
+	// Prefer ctx cancellation over send even when both are ready
+	// (e.g. channel buffer is empty but context is already cancelled).
+	if ctx.Err() != nil {
+		return false
+	}
 	select {
 	case ch <- ev:
 		return true

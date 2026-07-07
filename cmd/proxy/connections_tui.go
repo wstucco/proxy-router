@@ -102,7 +102,15 @@ func (m *tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, frameTick()
 	case evMsg:
 		m.apply(connEvent(msg))
-		return m, waitEvent(m.events)
+		// Also cleanup expired rows and schedule the next frame tick
+		// so stale entries don't linger during high event traffic.
+		for id, r := range m.rows {
+			if !r.closedAt.IsZero() && time.Since(r.closedAt) > keepDead {
+				delete(m.rows, id)
+			}
+		}
+		m.clampScroll()
+		return m, tea.Batch(waitEvent(m.events), frameTick())
 	}
 	return m, nil
 }
