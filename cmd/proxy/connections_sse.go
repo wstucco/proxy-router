@@ -21,6 +21,16 @@ type connEvent struct {
 	Status   string // human message for the status bar (Type == "status")
 }
 
+// sendCtx sends ev to ch, aborting and returning false if ctx is cancelled.
+func sendCtx(ctx context.Context, ch chan<- connEvent, ev connEvent) bool {
+	select {
+	case ch <- ev:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 // streamEvents feeds ch from the daemon's /_pr/events SSE stream,
 // reconnecting with a fixed backoff. If the daemon predates the SSE
 // endpoint (404 — e.g. the service wasn't restarted after an upgrade),
@@ -35,7 +45,9 @@ func streamEvents(ctx context.Context, addr string, ch chan<- connEvent) {
 			pollEvents(ctx, addr, ch)
 			return
 		}
-		ch <- connEvent{Type: "status", Status: "disconnected from " + addr + " — retrying"}
+		if !sendCtx(ctx, ch, connEvent{Type: "status", Status: "disconnected from " + addr + " — retrying"}) {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -67,7 +79,9 @@ func readEventStream(ctx context.Context, addr string, ch chan<- connEvent) erro
 		return sseError("daemon returned " + resp.Status)
 	}
 
-	ch <- connEvent{Type: "status", Status: "live — " + addr}
+	if !sendCtx(ctx, ch, connEvent{Type: "status", Status: "live — " + addr}) {
+		return nil
+	}
 
 	br := bufio.NewReader(resp.Body)
 	var event, data string
@@ -84,7 +98,9 @@ func readEventStream(ctx context.Context, addr string, ch chan<- connEvent) erro
 			data = strings.TrimPrefix(line, "data: ")
 		case line == "" && event != "":
 			if ev, ok := parseSSEEvent(event, data); ok {
-				ch <- ev
+				if !sendCtx(ctx, ch, ev) {
+					return nil
+				}
 			}
 			event, data = "", ""
 		}
@@ -120,7 +136,9 @@ func parseSSEEvent(event, data string) (connEvent, bool) {
 // pollEvents is the degraded mode for daemons without SSE: a periodic full
 // snapshot via /_pr/connections.
 func pollEvents(ctx context.Context, addr string, ch chan<- connEvent) {
-	ch <- connEvent{Type: "status", Status: "polling — " + addr + " (daemon has no SSE, restart it after upgrading)"}
+	if !sendCtx(ctx, ch, connEvent{Type: "status", Status: "polling — " + addr + " (daemon has no SSE, restart it after upgrading)"}) {
+		return
+	}
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -131,9 +149,13 @@ func pollEvents(ctx context.Context, addr string, ch chan<- connEvent) {
 		}
 		conns, err := fetchConnections(addr)
 		if err != nil {
-			ch <- connEvent{Type: "status", Status: "disconnected from " + addr + " — retrying"}
+			if !sendCtx(ctx, ch, connEvent{Type: "status", Status: "disconnected from " + addr + " — retrying"}) {
+				return
+			}
 			continue
 		}
-		ch <- connEvent{Type: "snapshot", Snapshot: conns}
+		if !sendCtx(ctx, ch, connEvent{Type: "snapshot", Snapshot: conns}) {
+			return
+		}
 	}
 }

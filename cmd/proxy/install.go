@@ -159,6 +159,7 @@ func cmdInstall() {
 			})
 			f.Close()
 			if err != nil {
+				os.Remove(p.svcFile)
 				fmt.Fprintf(os.Stderr, "error: install: writing systemd service: %v\n", err)
 				os.Exit(1)
 			}
@@ -190,6 +191,7 @@ func cmdInstall() {
 			})
 			f.Close()
 			if err != nil {
+				os.Remove(p.plist)
 				fmt.Fprintf(os.Stderr, "error: install: writing plist: %v\n", err)
 				os.Exit(1)
 			}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -56,4 +57,53 @@ func itoa(i int) string {
 		i /= 10
 	}
 	return string(buf[pos:])
+}
+
+// TestSendCtxCancelled verifies that sendCtx returns false immediately
+// when the context is already cancelled, even if the channel is empty.
+// Prior to the fix, a blocking send on a full channel would hang
+// indefinitely after context cancellation.
+func TestSendCtxCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancelled
+
+	ch := make(chan connEvent, 1)
+	if sendCtx(ctx, ch, connEvent{Type: "snapshot"}) {
+		t.Error("sendCtx returned true on cancelled context")
+	}
+}
+
+// TestSendCtxFullChannel verifies that sendCtx returns false when the
+// channel is full and the context is cancelled, rather than blocking.
+func TestSendCtxFullChannel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	ch := make(chan connEvent, 1)
+
+	// Fill the channel.
+	ch <- connEvent{Type: "snapshot"}
+
+	cancel() // cancel before the second send
+
+	if sendCtx(ctx, ch, connEvent{Type: "open"}) {
+		t.Error("sendCtx returned true on cancelled context with full channel")
+	}
+}
+
+// TestSendCtxSuccess verifies sendCtx sends successfully on an uncancelled
+// context with room in the buffer.
+func TestSendCtxSuccess(t *testing.T) {
+	ctx := context.Background()
+	ch := make(chan connEvent, 1)
+
+	if !sendCtx(ctx, ch, connEvent{Type: "snapshot"}) {
+		t.Error("sendCtx returned false on valid send")
+	}
+	select {
+	case ev := <-ch:
+		if ev.Type != "snapshot" {
+			t.Errorf("got event type %q, want %q", ev.Type, "snapshot")
+		}
+	default:
+		t.Error("channel is empty, expected event")
+	}
 }
