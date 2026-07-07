@@ -24,8 +24,10 @@ func cmdConnections(args []string) {
 	fs := flag.NewFlagSet("connections", flag.ExitOnError)
 	cfgFile := fs.String("config", p.cfgFile, "path to config file (to find the listen address)")
 	listen := fs.String("listen", "", "daemon address (overrides config)")
-	interval := fs.Duration("interval", time.Second, "refresh interval")
+	interval := fs.Duration("interval", time.Second, "refresh interval (plain mode)")
 	once := fs.Bool("once", false, "print one snapshot and exit (no TUI)")
+	plain := fs.Bool("plain", false, "force the basic ANSI TUI")
+	enhanced := fs.Bool("enhanced", false, "force the enhanced TUI (scroll, filter)")
 	fs.Parse(args)
 
 	addr := *listen
@@ -39,17 +41,47 @@ func cmdConnections(args []string) {
 	}
 	addr = normalizeListen(addr)
 
-	if *once {
+	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
+	switch decideMode(isTTY, os.Getenv("TERM"), *plain, *enhanced, *once) {
+	case modeOnce:
 		conns, err := fetchConnections(addr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: cannot reach proxy-router at %s — is the daemon running? (%v)\n", addr, err)
 			os.Exit(1)
 		}
 		fmt.Print(renderTable(conns, 120, len(conns)+2, false))
-		return
+	case modePlain:
+		runConnectionsTUI(addr, *interval)
+	case modeEnhanced:
+		runConnectionsEnhanced(addr)
 	}
+}
 
-	runConnectionsTUI(addr, *interval)
+type connMode int
+
+const (
+	modeOnce connMode = iota
+	modePlain
+	modeEnhanced
+)
+
+// decideMode picks the UI: explicit flags win (once > plain > enhanced);
+// otherwise degrade gracefully — non-TTY stdout or a dumb/empty TERM gets
+// the script-friendly snapshot, an interactive terminal gets the enhanced
+// TUI.
+func decideMode(isTTY bool, termEnv string, plain, enhanced, once bool) connMode {
+	switch {
+	case once:
+		return modeOnce
+	case plain:
+		return modePlain
+	case enhanced:
+		return modeEnhanced
+	case !isTTY, termEnv == "", termEnv == "dumb":
+		return modeOnce
+	default:
+		return modeEnhanced
+	}
 }
 
 // normalizeListen turns ":1337" into "localhost:1337" for dialing.

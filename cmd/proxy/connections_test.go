@@ -1,12 +1,97 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wstucco/proxy-router/internal/proxy"
 )
+
+func TestDecideMode(t *testing.T) {
+	tests := []struct {
+		name                   string
+		isTTY                  bool
+		term                   string
+		plain, enhanced, once  bool
+		want                   connMode
+	}{
+		{"interactive default is enhanced", true, "xterm-256color", false, false, false, modeEnhanced},
+		{"pipe degrades to snapshot", false, "xterm-256color", false, false, false, modeOnce},
+		{"dumb term degrades to snapshot", true, "dumb", false, false, false, modeOnce},
+		{"empty term degrades to snapshot", true, "", false, false, false, modeOnce},
+		{"-plain wins over detection", false, "dumb", true, false, false, modePlain},
+		{"-enhanced wins over detection", false, "", false, true, false, modeEnhanced},
+		{"-once wins over everything", true, "xterm", true, true, true, modeOnce},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decideMode(tt.isTTY, tt.term, tt.plain, tt.enhanced, tt.once)
+			if got != tt.want {
+				t.Errorf("decideMode() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTuiModelFilterAndScroll(t *testing.T) {
+	m := &tuiModel{rows: map[uint64]*tuiRow{}, height: 8} // bodyHeight = 4
+
+	for i := uint64(1); i <= 10; i++ {
+		m.upsert(proxy.ConnInfo{ID: i, Active: true, Dest: fmt.Sprintf("h%d:443", i)})
+	}
+	m.apply(connEvent{Type: "close", Conn: &proxy.ConnInfo{ID: 1, Dest: "h1:443"}})
+	m.apply(connEvent{Type: "close", Conn: &proxy.ConnInfo{ID: 2, Dest: "h2:443"}})
+
+	if got := len(m.visibleRows()); got != 10 {
+		t.Errorf("filter all: %d rows, want 10", got)
+	}
+	m.activeOnly = true
+	if got := len(m.visibleRows()); got != 8 {
+		t.Errorf("filter active: %d rows, want 8", got)
+	}
+	// Active rows sort newest first.
+	if first := m.visibleRows()[0].info.ID; first != 10 {
+		t.Errorf("first row ID %d, want 10", first)
+	}
+
+	// Scroll clamps to the filtered set.
+	m.scroll = 100
+	m.clampScroll()
+	if want := 8 - m.bodyHeight(); m.scroll != want {
+		t.Errorf("scroll clamped to %d, want %d", m.scroll, want)
+	}
+	m.scroll = -5
+	m.clampScroll()
+	if m.scroll != 0 {
+		t.Errorf("negative scroll not clamped: %d", m.scroll)
+	}
+}
+
+// A polling snapshot must merge, not replace: existing rows keep their
+// identity and rows missing from the snapshot get closed.
+func TestTuiModelSnapshotMerge(t *testing.T) {
+	m := &tuiModel{rows: map[uint64]*tuiRow{}}
+	m.apply(connEvent{Type: "snapshot", Snapshot: []proxy.ConnInfo{
+		{ID: 1, Active: true, Dest: "a:443"},
+		{ID: 2, Active: true, Dest: "b:443"},
+	}})
+	firstSeen := m.rows[1].seenAt
+
+	m.apply(connEvent{Type: "snapshot", Snapshot: []proxy.ConnInfo{
+		{ID: 1, Active: true, Dest: "a:443", BytesUp: 10},
+	}})
+	if m.rows[1].seenAt != firstSeen {
+		t.Error("snapshot merge re-flashed an existing row")
+	}
+	if m.rows[1].info.BytesUp != 10 {
+		t.Error("snapshot merge did not update counters")
+	}
+	if m.rows[2].closedAt.IsZero() {
+		t.Error("row missing from snapshot not marked closed")
+	}
+}
 
 func TestNormalizeListen(t *testing.T) {
 	if got := normalizeListen(":1337"); got != "localhost:1337" {

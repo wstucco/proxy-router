@@ -132,8 +132,10 @@ _proxy_router() {
   connections_flags=(
     '-config[Path to config file]:file:_files'
     '-listen[Daemon address (overrides config)]:address'
-    '-interval[Refresh interval (default 1s)]:duration'
+    '-interval[Refresh interval for plain mode (default 1s)]:duration'
     '-once[Print one snapshot and exit]'
+    '-plain[Force the basic ANSI TUI]'
+    '-enhanced[Force the enhanced TUI (scroll, filter)]'
   )
 
   local -a uninstall_flags
@@ -171,7 +173,7 @@ const bashCompletion = `_proxy_router() {
     completion)   COMPREPLY=($(compgen -W "zsh bash fish" -- "$cur")); return ;;
     uninstall)    COMPREPLY=($(compgen -W "--prune" -- "$cur")); return ;;
     run)          COMPREPLY=($(compgen -W "-config -listen -gen-config" -- "$cur")); return ;;
-    connections)  COMPREPLY=($(compgen -W "-config -listen -interval -once" -- "$cur")); return ;;
+    connections)  COMPREPLY=($(compgen -W "-config -listen -interval -once -plain -enhanced" -- "$cur")); return ;;
   esac
 
   COMPREPLY=($(compgen -W "$commands" -- "$cur"))
@@ -199,8 +201,10 @@ complete -c proxy-router -n "__fish_seen_subcommand_from run" -l gen-config -d "
 
 complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l config   -d "Path to config file" -r -F
 complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l listen   -d "Daemon address (overrides config)" -r
-complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l interval -d "Refresh interval (default 1s)" -r
+complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l interval -d "Refresh interval for plain mode (default 1s)" -r
 complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l once     -d "Print one snapshot and exit"
+complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l plain    -d "Force the basic ANSI TUI"
+complete -c proxy-router -n "__fish_seen_subcommand_from connections" -l enhanced -d "Force the enhanced TUI (scroll, filter)"
 
 complete -c proxy-router -n "__fish_seen_subcommand_from uninstall" -l prune -d "Also delete the config directory"
 

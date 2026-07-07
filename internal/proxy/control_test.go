@@ -153,7 +153,7 @@ func TestEventsStream(t *testing.T) {
 		if event != "stats" {
 			continue
 		}
-		var stats []connStat
+		var stats []ConnStat
 		if err := json.Unmarshal([]byte(data), &stats); err != nil {
 			t.Fatal(err)
 		}

@@ -29,8 +29,13 @@ RUN FLAGS:
 CONNECTIONS FLAGS:
   -config <path>    Path to config file (to find the daemon's listen address)
   -listen <addr>    Daemon address (overrides config)
-  -interval <dur>   Refresh interval (default 1s)
+  -interval <dur>   Refresh interval for plain mode (default 1s)
   -once             Print one snapshot and exit (no TUI, scripting-friendly)
+  -plain            Force the basic ANSI TUI
+  -enhanced         Force the enhanced TUI (scroll, active/all filter, live SSE)
+
+  Default: enhanced on an interactive terminal; piped output or TERM=dumb
+  degrade to a plain snapshot (same as -once).
 
 UNINSTALL FLAGS:
   --prune           Also delete the config directory

@@ -35,8 +35,8 @@ func (s *Server) handleControl(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "proxy-router: unknown control path", http.StatusNotFound)
 }
 
-// connStat is the per-tick byte counter update for one active connection.
-type connStat struct {
+// ConnStat is the per-tick byte counter update for one active connection.
+type ConnStat struct {
 	ID        uint64 `json:"id"`
 	BytesUp   int64  `json:"bytes_up"`
 	BytesDown int64  `json:"bytes_down"`
@@ -103,12 +103,12 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // activeStats returns the byte counters of all active connections.
-func activeStats() []connStat {
+func activeStats() []ConnStat {
 	connReg.Lock()
 	defer connReg.Unlock()
-	out := make([]connStat, 0, len(connReg.active))
+	out := make([]ConnStat, 0, len(connReg.active))
 	for _, e := range connReg.active {
-		out = append(out, connStat{ID: e.id, BytesUp: e.bytesUp.Load(), BytesDown: e.bytesDown.Load()})
+		out = append(out, ConnStat{ID: e.id, BytesUp: e.bytesUp.Load(), BytesDown: e.bytesDown.Load()})
 	}
 	return out
 }
