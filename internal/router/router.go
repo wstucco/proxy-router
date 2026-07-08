@@ -23,6 +23,16 @@ func SetConfig(cfg *config.Config) {
 	currentConfig.Store(cfg)
 }
 
+// ResetActiveLocation clears the cached active location so the next request
+// triggers a location transition (and re-fires hooks). Used on config reload
+// so that changed hooks take effect without waiting for an SSID change.
+func ResetActiveLocation() {
+	activeLocationMu.Lock()
+	activeLocationName = ""
+	activeLocationConfig = nil
+	activeLocationMu.Unlock()
+}
+
 // OnLocationChange is set by main to execute hooks when the active location changes.
 var OnLocationChange func(oldName, newName string, oldLoc, newLoc *config.Location)
 

@@ -450,9 +450,14 @@ func ConfigDiff(old, new *Config) string {
 	}
 
 	// locations
-	for k := range new.Locations {
-		if _, ok := old.Locations[k]; !ok {
+	for k, newLoc := range new.Locations {
+		oldLoc, exists := old.Locations[k]
+		if !exists {
 			fmt.Fprintf(&b, "\n  [locations] +%s", k)
+			continue
+		}
+		if d := locationDiff(k, oldLoc, newLoc); d != "" {
+			b.WriteString(d)
 		}
 	}
 	for k := range old.Locations {
@@ -473,6 +478,92 @@ func ConfigDiff(old, new *Config) string {
 		return " (no changes)"
 	}
 	return b.String()
+}
+
+// locationDiff returns a diff string for two versions of the same location,
+// or "" if they are identical.
+func locationDiff(name string, old, new *Location) string {
+	var b strings.Builder
+	prefix := "\n  [locations." + name + "]"
+
+	if old.Proxy != new.Proxy {
+		fmt.Fprintf(&b, "%s proxy: %q → %q", prefix, old.Proxy, new.Proxy)
+	}
+	if old.PAC != new.PAC {
+		fmt.Fprintf(&b, "%s pac: %q → %q", prefix, old.PAC, new.PAC)
+	}
+	if old.Domain != new.Domain {
+		fmt.Fprintf(&b, "%s domain: %q → %q", prefix, old.Domain, new.Domain)
+	}
+	if !stringSliceEqual(old.SSIDs, new.SSIDs) {
+		fmt.Fprintf(&b, "%s ssids: %v → %v", prefix, old.SSIDs, new.SSIDs)
+	}
+	if !stringSliceEqual(old.IPs, new.IPs) {
+		fmt.Fprintf(&b, "%s ips: %v → %v", prefix, old.IPs, new.IPs)
+	}
+	if !stringSliceEqual(old.Domains, new.Domains) {
+		fmt.Fprintf(&b, "%s domains: %v → %v", prefix, old.Domains, new.Domains)
+	}
+	if !stringSliceEqual(old.DNS, new.DNS) {
+		fmt.Fprintf(&b, "%s dns: %v → %v", prefix, old.DNS, new.DNS)
+	}
+	if !stringSliceEqual(old.NoProxy, new.NoProxy) {
+		fmt.Fprintf(&b, "%s no_proxy: %v → %v", prefix, old.NoProxy, new.NoProxy)
+	}
+	if !routesEqual(old.Routes, new.Routes) {
+		fmt.Fprintf(&b, "%s routes: %v → %v", prefix, old.Routes, new.Routes)
+	}
+	if !hooksEqual(old.Hooks, new.Hooks) {
+		fmt.Fprintf(&b, "%s hooks: changed", prefix)
+	}
+
+	return b.String()
+}
+
+func stringSliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func routesEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func hooksEqual(a, b *hooks.LocationHooks) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return hookConfigEqual(a.OnEnter, b.OnEnter) && hookConfigEqual(a.OnLeave, b.OnLeave)
+	}
+}
+
+func hookConfigEqual(a, b *hooks.HookConfig) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return a.Exec == b.Exec && a.Timeout == b.Timeout
+	}
 }
 
 // silenceLibsDefault returns true if the SilenceLibs field effectively means

@@ -301,3 +301,18 @@ func TestDecide(t *testing.T) {
 		})
 	}
 }
+
+func TestResetActiveLocation(t *testing.T) {
+	// Set an active location.
+	activeLocationName = "office"
+	activeLocationConfig = &config.Location{Proxy: "corp"}
+
+	ResetActiveLocation()
+
+	if activeLocationName != "" {
+		t.Errorf("activeLocationName = %q, want empty", activeLocationName)
+	}
+	if activeLocationConfig != nil {
+		t.Error("activeLocationConfig should be nil after reset")
+	}
+}

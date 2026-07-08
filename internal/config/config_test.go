@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/wstucco/proxy-router/internal/hooks"
 )
 
 // ─── config load / migration ──────────────────────────────────────────────────
@@ -345,5 +347,129 @@ ssids = ["Test"]
 	}
 	if cfg.Defaults.PAC != "direct" {
 		t.Errorf("Defaults.PAC = %q, want %q", cfg.Defaults.PAC, "direct")
+	}
+}
+
+// ─── ConfigDiff ─────────────────────────────────────────────────────────────────
+
+func TestConfigDiffLocationHooks(t *testing.T) {
+	oldCfg := &Config{
+		Locations: map[string]*Location{
+			"office": {
+				Proxy: "corp",
+				SSIDs: []string{"OfficeWifi"},
+			},
+		},
+	}
+	newCfg := &Config{
+		Locations: map[string]*Location{
+			"office": {
+				Proxy: "corp",
+				SSIDs: []string{"OfficeWifi"},
+				Hooks: &hooks.LocationHooks{
+					OnEnter: &hooks.HookConfig{Exec: "echo entered"},
+				},
+			},
+		},
+	}
+
+	diff := ConfigDiff(oldCfg, newCfg)
+	if diff == " (no changes)" {
+		t.Error("ConfigDiff: expected location hooks change to be detected")
+	}
+}
+
+func TestConfigDiffLocationProxy(t *testing.T) {
+	oldCfg := &Config{
+		Locations: map[string]*Location{
+			"office": {Proxy: "corp", SSIDs: []string{"OfficeWifi"}},
+		},
+	}
+	newCfg := &Config{
+		Locations: map[string]*Location{
+			"office": {Proxy: "direct", SSIDs: []string{"OfficeWifi"}},
+		},
+	}
+
+	diff := ConfigDiff(oldCfg, newCfg)
+	if diff == " (no changes)" {
+		t.Error("ConfigDiff: expected location proxy change to be detected")
+	}
+}
+
+func TestConfigDiffLocationAdded(t *testing.T) {
+	oldCfg := &Config{Locations: map[string]*Location{}}
+	newCfg := &Config{
+		Locations: map[string]*Location{
+			"office": {Proxy: "corp", SSIDs: []string{"OfficeWifi"}},
+		},
+	}
+
+	diff := ConfigDiff(oldCfg, newCfg)
+	if diff == " (no changes)" {
+		t.Error("ConfigDiff: expected new location to be detected")
+	}
+}
+
+func TestConfigDiffLocationRemoved(t *testing.T) {
+	oldCfg := &Config{
+		Locations: map[string]*Location{
+			"office": {Proxy: "corp", SSIDs: []string{"OfficeWifi"}},
+		},
+	}
+	newCfg := &Config{Locations: map[string]*Location{}}
+
+	diff := ConfigDiff(oldCfg, newCfg)
+	if diff == " (no changes)" {
+		t.Error("ConfigDiff: expected removed location to be detected")
+	}
+}
+
+// ─── helper comparisons ─────────────────────────────────────────────────────────
+
+func TestStringSliceEqual(t *testing.T) {
+	if !stringSliceEqual(nil, nil) {
+		t.Error("nil slices should be equal")
+	}
+	if !stringSliceEqual([]string{}, []string{}) {
+		t.Error("empty slices should be equal")
+	}
+	if stringSliceEqual([]string{"a"}, []string{"b"}) {
+		t.Error("different values should not be equal")
+	}
+	if stringSliceEqual([]string{"a"}, []string{"a", "b"}) {
+		t.Error("different lengths should not be equal")
+	}
+}
+
+func TestRoutesEqual(t *testing.T) {
+	if !routesEqual(nil, nil) {
+		t.Error("nil maps should be equal")
+	}
+	if !routesEqual(map[string]string{}, map[string]string{}) {
+		t.Error("empty maps should be equal")
+	}
+	if routesEqual(map[string]string{"a": "1"}, map[string]string{"a": "2"}) {
+		t.Error("different values should not be equal")
+	}
+	if routesEqual(map[string]string{"a": "1"}, map[string]string{"b": "1"}) {
+		t.Error("different keys should not be equal")
+	}
+}
+
+func TestHooksEqual(t *testing.T) {
+	if !hooksEqual(nil, nil) {
+		t.Error("nil hooks should be equal")
+	}
+	if hooksEqual(&hooks.LocationHooks{}, nil) {
+		t.Error("empty vs nil should not be equal")
+	}
+	if !hooksEqual(&hooks.LocationHooks{}, &hooks.LocationHooks{}) {
+		t.Error("empty hooks should be equal")
+	}
+	a := &hooks.LocationHooks{OnEnter: &hooks.HookConfig{Exec: "echo hello"}}
+	b := &hooks.LocationHooks{OnEnter: &hooks.HookConfig{Exec: "echo bye"}}
+	if hooksEqual(a, b) {
+		t.Error("different hook exec should not be equal")
 	}
 }

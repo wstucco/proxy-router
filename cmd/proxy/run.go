@@ -164,6 +164,7 @@ func cmdRun(args []string) {
 		cfgPtr.Store(newCfg)
 		srvPtr.Store(newProxy(newCfg))
 		router.SetConfig(newCfg)
+		router.ResetActiveLocation()
 		proxy.ClearNegotiateCache()
 		diff := config.ConfigDiff(oldCfg, newCfg)
 		mainLog.Info("config reloaded:%s", diff)
