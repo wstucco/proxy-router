@@ -1,20 +1,31 @@
 # Changelog
 
-## v0.8.0 (2026-07-07)
+## v0.8.0 (2026-07-08)
 
 ### Enhancements
 
 - [CLI] **New `connections` command** — live terminal view of connections through the proxy (mini Little Snitch): client process → destination, location, upstream, bytes up/down, age
 - [CLI] **Dual-mode UI** — enhanced TUI by default on interactive terminals (bubbletea: scroll with arrows/pgup/pgdn, `a` toggles active/all filter, live SSE updates with green flash on open and dimmed recently-closed); `-plain` for the basic ANSI table; piped output or `TERM=dumb` degrade to a script-friendly snapshot (`-once` forces it)
 - [Proxy] Connection tracking registry — CONNECT tunnels, plain HTTP requests, and MITM sessions are tracked with live byte counters; survives config reloads
-- [Proxy] Control endpoint `GET /_pr/connections` on the listen port (loopback only) — returns active and recent connections as JSON; direct (non-proxied) requests to the listen port no longer get self-proxied
 - [Proxy] **SSE stream `GET /_pr/events`** — push events for the TUI and third-party apps: initial `snapshot`, then `open`/`close`/`dest`/`proc` per connection plus a periodic `stats` event with live byte counters; slow consumers lose events but the stats tick is authoritative on the active set and self-heals. Try it: `curl -N localhost:1337/_pr/events`
+- [Proxy] Control endpoint `GET /_pr/connections` on the listen port (loopback only) — returns active and recent connections as JSON; direct (non-proxied) requests to the listen port no longer get self-proxied
 - [macOS] Client process attribution via libproc (`proc_listpids`/`proc_pidfdinfo`) — resolves which process opened each connection, no privileges needed for same-user processes
+- [Hooks] **Re-fire hooks on config reload** — `OnEnter`/`OnLeave` now re-execute on reload only when the hooks for the currently active location actually changed (not on every reload), avoiding unnecessary VPN reconnects etc.
 - [Deps] Add `golang.org/x/term`, `charmbracelet/bubbletea`, `charmbracelet/lipgloss` for the connections TUIs
 
 ### Changes
 
 - [Log] **Router log label `no-location` renamed to `default`** — connections with no matched location use the `[defaults]` section, and the label now says so. Update any log parsers matching `no-location`
+
+### Bug fixes
+
+- [Reload] **Fix race condition on reload** — concurrent `reload()` invocations from config watcher + SIGHUP are now serialized with `reloadMu`; fixes panic under rapid config changes
+- [Reload] **Fix ConfigDiff ignoring `Location` field changes** — `ConfigDiff` now compares all fields (proxy, pac, domain, ssids, ips, domains, dns, no_proxy, routes, hooks) for existing keys; no longer prints "(no changes)" when hooks/proxy/pac actually changed
+- [Proxy] **Graceful shutdown** — SIGINT/SIGTERM drain active connections via `server.Shutdown(ctx)` instead of aborting them; can be interrupted with a second signal
+- [Events] **Fix goroutine leak in SSE stream** — `sendCtx()` selects on `ctx.Done()` before every channel send, preventing indefinite blocking on a full channel after the consumer disconnects
+- [Events] **Fix dead rows lingering in TUI during high traffic** — frame tick rescheduled after event messages so stale rows render with dim style and clean up promptly
+- [Install] **Fix partial zero-byte config file** — `template.Execute` failure after `os.Create` now removes the incomplete file instead of leaving a zero-byte stub on disk
+- [Install] **Handle `os.Executable()` / `os.UserHomeDir()` errors** — install and completions no longer silently continue with empty paths if the binary path or home directory cannot be resolved
 
 ## v0.7.1 (2026-07-06)
 

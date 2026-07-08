@@ -128,6 +128,14 @@ func cmdRun(args []string) {
 		return s
 	}
 
+	// hooksOf returns the LocationHooks from a config.Location, or nil.
+	hooksOf := func(loc *config.Location) *hooks.LocationHooks {
+		if loc != nil {
+			return loc.Hooks
+		}
+		return nil
+	}
+
 	var (
 		cfgPtr  atomic.Pointer[config.Config]
 		srvPtr  atomic.Pointer[proxy.Server]
@@ -164,8 +172,34 @@ func cmdRun(args []string) {
 		cfgPtr.Store(newCfg)
 		srvPtr.Store(newProxy(newCfg))
 		router.SetConfig(newCfg)
-		router.ResetActiveLocation()
 		proxy.ClearNegotiateCache()
+
+		// Re-fire hooks for the current location only if they changed.
+		if name := router.ActiveLocationName(); name != "" {
+			oldLoc := oldCfg.Locations[name]
+			newLoc := newCfg.Locations[name]
+			if !hooks.Equal(hooksOf(oldLoc), hooksOf(newLoc)) {
+				// OnLeave with old hooks.
+				if h := hooksOf(oldLoc); h != nil && h.OnLeave != nil {
+					env := map[string]string{
+						"LOCATION":     name,
+						"ACTION":       "leave",
+						"NEW_LOCATION": name,
+					}
+					hooks.Execute(h.OnLeave, env)
+				}
+				// OnEnter with new hooks.
+				if h := hooksOf(newLoc); h != nil && h.OnEnter != nil {
+					env := map[string]string{
+						"LOCATION":     name,
+						"ACTION":       "enter",
+						"OLD_LOCATION": name,
+					}
+					hooks.Execute(h.OnEnter, env)
+				}
+			}
+		}
+
 		diff := config.ConfigDiff(oldCfg, newCfg)
 		mainLog.Info("config reloaded:%s", diff)
 	}

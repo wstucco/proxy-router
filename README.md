@@ -14,14 +14,19 @@ See [CHANGELOG](CHANGELOG) for the full history.
 - **TLS interception (MITM)** — enables path-based routing on HTTPS connections; automatic when routes are defined
 - Authenticated upstream proxies with automatic Basic/NTLM/Negotiate negotiation
 - **macOS-native Kerberos/Negotiate auth** via GSS.framework (no password needed with valid TGT)
+- **Linux Kerberos/Negotiate auth** via gokrb5 (pure Go, system credential cache)
+- **Linux SSID detection** via `iw dev` polling
 - **Negotiate failure cache** (30s TTL) — avoids hammering KDC/proxy on repeated failures
 - **TOML config** — auto-migrated from JSON on first run (supports both legacy `upstream/rules` and current `proxies/locations` formats)
-- **`version` field** in config for future schema upgrades
 - **Structured logging** with configurable levels (`debug`, `info`, `warn`, `error`) — `[log]` section in config
-- **Configurable routes in `[defaults]`** — apply regardless of location; location routes override same-key defaults
 - **PAC (Proxy Auto-Config)** — per-location PAC scripts (file:// or http://) evaluated via JS runtime
-- **Location hooks** (`on_enter` / `on_leave`) — execute shell commands when the active location changes
+- **Location hooks** (`on_enter` / `on_leave`) — execute shell commands when the active location changes; re-fire on config reload only when hooks actually changed
+- **Connection tracking** — every connection tracked with live byte counters, process attribution, and SSE event stream
+- **Live connections TUI** — `proxy-router connections` opens a real-time dashboard showing each connection: process → destination → location → upstream → bytes up/down → age, with scroll, filter, and active/recent toggles
+- **SSE event stream** — `GET /_pr/events` pushes connection open/close/stats events for third-party integrations
+- **Client process resolution** (macOS) — shows which app opened each connection via libproc (no privileges needed)
 - Hot config reload — save the file and changes apply within 1 second (or send `SIGHUP`); content-hash guard avoids spurious reloads
+- Graceful shutdown — SIGINT/SIGTERM drain active connections before exiting (second signal forces immediate stop)
 - macOS network change listener via `SCDynamicStore` — SSID cache updated on network events
 - Brew service and manual LaunchAgent support
 
@@ -98,6 +103,7 @@ proxy-router install
 ```
 proxy-router run                         Start the proxy
 proxy-router run -listen localhost:1337 -config ~/myconf.toml
+proxy-router connections [-once] [-plain]  Live connections TUI (requires running proxy)
 proxy-router migrate                     Migrate config from legacy format
 proxy-router install                     Write config, install completions, register LaunchAgent
 proxy-router install-certs               Generate CA certificate for TLS MITM and print trust instructions
@@ -315,7 +321,7 @@ Supported helpers: `dnsResolve`, `isInNet`, `isPlainHostName`, `shExpMatch`, `my
 
 ### Hooks (on_enter / on_leave)
 
-Hooks execute shell commands when the active location changes — e.g. when you switch Wi-Fi networks. This is useful for triggering side effects like connecting or disconnecting a VPN.
+Hooks execute shell commands when the active location changes — e.g. when you switch Wi-Fi networks, or on config reload only when hooks for the current location actually changed. This is useful for triggering side effects like connecting or disconnecting a VPN.
 
 ```toml
 [locations.office]

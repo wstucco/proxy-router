@@ -25,6 +25,29 @@ type LocationHooks struct {
 	OnLeave *HookConfig `toml:"on_leave,omitempty" json:"on_leave,omitempty"`
 }
 
+// Equal returns true if a and b describe the same hooks.
+func Equal(a, b *LocationHooks) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return hookConfigEqual(a.OnEnter, b.OnEnter) && hookConfigEqual(a.OnLeave, b.OnLeave)
+	}
+}
+
+func hookConfigEqual(a, b *HookConfig) bool {
+	switch {
+	case a == nil && b == nil:
+		return true
+	case a == nil || b == nil:
+		return false
+	default:
+		return a.Exec == b.Exec && a.Timeout == b.Timeout
+	}
+}
+
 // Execute runs a hook command asynchronously. Logs errors but never blocks.
 func Execute(hook *HookConfig, env map[string]string) {
 	if hook == nil || hook.Exec == "" {

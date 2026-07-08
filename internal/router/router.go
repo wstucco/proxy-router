@@ -23,9 +23,17 @@ func SetConfig(cfg *config.Config) {
 	currentConfig.Store(cfg)
 }
 
+// ActiveLocationName returns the name of the currently active location, or ""
+// if no location is matched. Used on reload to check whether hooks changed
+// for the current location.
+func ActiveLocationName() string {
+	activeLocationMu.Lock()
+	defer activeLocationMu.Unlock()
+	return activeLocationName
+}
+
 // ResetActiveLocation clears the cached active location so the next request
-// triggers a location transition (and re-fires hooks). Used on config reload
-// so that changed hooks take effect without waiting for an SSID change.
+// triggers a location transition (and re-fires hooks).
 func ResetActiveLocation() {
 	activeLocationMu.Lock()
 	activeLocationName = ""
