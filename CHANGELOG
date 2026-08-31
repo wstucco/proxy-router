@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.2 (2026-08-31)
+
+### Bug fixes
+
+- [Proxy] **Fix PAC evaluation for HTTPS requests on port 443** — `handleCONNECT` was only stripping the port from the hostname for PAC evaluation when the port was not 443. This caused HTTPS requests to port 443 (e.g., `host.example.com:443`) to be evaluated with the port included, breaking wildcard patterns like `*.example.com`. Now the port is always stripped regardless of value, consistent with PAC semantics where patterns match hostnames only.
+- [Tests] **Added comprehensive PAC port handling tests** — `TestPACEvaluationWithPorts` and `TestPACPatternMatchingWithPorts` verify correct port stripping and pattern matching for all port combinations (443, 80, custom ports).
+
 ## v0.8.1 (2026-08-31)
 
 ### Bug fixes
