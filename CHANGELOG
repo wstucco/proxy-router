@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.1 (2026-08-31)
+
+### Bug fixes
+
+- [Proxy] **Fix PAC evaluation with ports in hostname** — PAC scripts use shell-style pattern matching (`shExpMatch`) on hostnames only, not `host:port`. When `handleHTTP` and `mitmProxy` passed the host with port (e.g., `host.example.com:443`) to PAC evaluation, patterns like `*.example.com` would fail to match, causing requests to be proxied instead of going direct. Now both handlers strip the port before PAC evaluation, consistent with `handleCONNECT`.
+
 ## v0.8.0 (2026-07-08)
 
 ### Enhancements

@@ -130,8 +130,14 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	decision := router.Decide(s.cfg, r.Host)
 
 	// Evaluate PAC script if configured for this location.
+	// Strip port from host for PAC evaluation: PAC patterns typically match hostnames only,
+	// not host:port combinations. For example, "*.example.com" won't match "host.example.com:8080".
+	pacHost := r.Host
+	if h, _, err := net.SplitHostPort(r.Host); err == nil {
+		pacHost = h
+	}
 	pacURL := r.URL.String()
-	if err := applyPAC(&decision, pacURL, r.Host); err != nil {
+	if err := applyPAC(&decision, pacURL, pacHost); err != nil {
 		pkgLog.Warn("PAC eval failed for HTTP %s: %v — using static config", r.Host, err)
 	}
 
@@ -294,9 +300,14 @@ func (s *Server) mitmProxy(clientTLS *tls.Conn, origHost string, decision *confi
 
 		// Evaluate PAC per-request in MITM mode — each decrypted request
 		// may target a different host, so the PAC decision may differ.
+		// Strip port from host for PAC evaluation (see handleHTTP for details).
 		perReqDecision := *decision
 		mitmURL := req.URL.String()
-		if err := applyPAC(&perReqDecision, mitmURL, req.Host); err != nil {
+		pacHost := req.Host
+		if h, _, err := net.SplitHostPort(req.Host); err == nil {
+			pacHost = h
+		}
+		if err := applyPAC(&perReqDecision, mitmURL, pacHost); err != nil {
 			pkgLog.Warn("MITM PAC eval for %s: %v — using location config", req.Host, err)
 		}
 
